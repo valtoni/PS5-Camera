@@ -4,6 +4,11 @@ $InstallerRoot = Split-Path -Parent $PSScriptRoot
 $Module = Join-Path $InstallerRoot 'InstallerCoordinator.psd1'
 Import-Module $Module -Force
 
+Describe 'PS5 Camera transactional installer planner' {
+    BeforeAll {
+        $script:InstallerRoot = Split-Path -Parent $PSScriptRoot
+        Import-Module (Join-Path $script:InstallerRoot 'InstallerCoordinator.psd1') -Force
+
 function New-SyntheticRelease {
     param(
         [Parameter(Mandatory)][string] $Root,
@@ -99,27 +104,28 @@ function New-OwnedInstallerState {
     $statePath
 }
 
-Describe 'PS5 Camera transactional installer planner' {
+    }
+
     It 'is a blocked, non-mutating dry-run when no release exists' {
         $plan = New-TestPlan
-        $plan.mode | Should Be 'dry_run'
-        $plan.status | Should Be 'blocked'
-        (@($plan.blockers.code) -contains 'release_manifest_required') | Should Be $true
-        Test-Path (Join-Path $TestDrive 'Program Files\PS5 Camera') | Should Be $false
+        $plan.mode | Should -Be 'dry_run'
+        $plan.status | Should -Be 'blocked'
+        (@($plan.blockers.code) -contains 'release_manifest_required') | Should -Be $true
+        Test-Path (Join-Path $TestDrive 'Program Files\PS5 Camera') | Should -Be $false
     }
 
     It 'rejects a release that lacks firmware approval' {
         $manifest = New-SyntheticRelease (Join-Path $TestDrive 'release')
         $plan = New-TestPlan -ReleaseManifest $manifest
-        (@($plan.blockers.code) -contains 'firmware_authorization_evidence_missing') | Should Be $true
+        (@($plan.blockers.code) -contains 'firmware_authorization_evidence_missing') | Should -Be $true
     }
 
     It 'detects tampering before planning copies' {
         $manifest = New-SyntheticRelease (Join-Path $TestDrive 'tampered') -IncludeAuthorization
         Add-Content -LiteralPath (Join-Path (Split-Path -Parent $manifest) 'ps5cam-service.exe') -Value 'tamper'
         $plan = New-TestPlan -ReleaseManifest $manifest
-        (@($plan.blockers.code) -contains 'release_artifact_integrity_failed') | Should Be $true
-        (@($plan.steps | ForEach-Object id) -contains 'copy-windows_service') | Should Be $false
+        (@($plan.blockers.code) -contains 'release_artifact_integrity_failed') | Should -Be $true
+        (@($plan.steps | ForEach-Object id) -contains 'copy-windows_service') | Should -Be $false
     }
 
     It 'never includes the protected UVC PID in a driver plan' {
@@ -128,8 +134,8 @@ Describe 'PS5 Camera transactional installer planner' {
         $document.hardware_ids = @('USB\VID_05A9&PID_0580', 'USB\VID_05A9&PID_058C')
         $document | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifest -Encoding utf8NoBOM
         $plan = New-TestPlan -ReleaseManifest $manifest
-        (@($plan.blockers.code) -contains 'release_hardware_scope_invalid') | Should Be $true
-        $plan.protected_hardware_id | Should Be 'USB\VID_05A9&PID_058C'
+        (@($plan.blockers.code) -contains 'release_hardware_scope_invalid') | Should -Be $true
+        $plan.protected_hardware_id | Should -Be 'USB\VID_05A9&PID_058C'
     }
 
     It 'treats external binding JSON as test-only diagnostic evidence' {
@@ -139,10 +145,10 @@ Describe 'PS5 Camera transactional installer planner' {
         } | ConvertTo-Json | Set-Content -LiteralPath $observation -Encoding utf8NoBOM
         $manifest = New-SyntheticRelease (Join-Path $TestDrive 'binding-release') -IncludeAuthorization
         $plan = New-TestPlan -ReleaseManifest $manifest -BindingObservationPath $observation
-        (@($plan.blockers.code) -contains 'external_binding_observation_untrusted') | Should Be $true
-        $plan.binding_evidence.authoritative | Should Be $false
-        $plan.binding_evidence.test_only | Should Be $true
-        @($plan.steps | Where-Object id -eq 'remove-temporary-binding').Count | Should Be 0
+        (@($plan.blockers.code) -contains 'external_binding_observation_untrusted') | Should -Be $true
+        $plan.binding_evidence.authoritative | Should -Be $false
+        $plan.binding_evidence.test_only | Should -Be $true
+        @($plan.steps | Where-Object id -eq 'remove-temporary-binding').Count | Should -Be 0
     }
 
     It 'never promotes externally confirmed oem names into removal authority' {
@@ -152,9 +158,9 @@ Describe 'PS5 Camera transactional installer planner' {
         } | ConvertTo-Json | Set-Content -LiteralPath $observation -Encoding utf8NoBOM
         $manifest = New-SyntheticRelease (Join-Path $TestDrive 'confirmed-release') -IncludeAuthorization
         $plan = New-TestPlan -ReleaseManifest $manifest -BindingObservationPath $observation -ConfirmTemporaryPublishedName 'oem28.inf'
-        (@($plan.blockers.code) -contains 'external_binding_observation_untrusted') | Should Be $true
-        @($plan.steps | Where-Object id -in @('export-temporary-binding', 'remove-temporary-binding')).Count | Should Be 0
-        $null -eq $plan.temporary_binding | Should Be $true
+        (@($plan.blockers.code) -contains 'external_binding_observation_untrusted') | Should -Be $true
+        @($plan.steps | Where-Object id -in @('export-temporary-binding', 'remove-temporary-binding')).Count | Should -Be 0
+        $null -eq $plan.temporary_binding | Should -Be $true
     }
 
     It 'keeps foreign external binding state diagnostic-only rather than guessing' {
@@ -163,19 +169,19 @@ Describe 'PS5 Camera transactional installer planner' {
             hardware_id = 'USB\VID_05A9&PID_058C'; published_name = 'oem99.inf'; provider = 'libwdi'; temporary = $true
         } | ConvertTo-Json | Set-Content -LiteralPath $observation -Encoding utf8NoBOM
         $plan = New-TestPlan -BindingObservationPath $observation
-        (@($plan.blockers | ForEach-Object code) -contains 'external_binding_observation_untrusted') | Should Be $true
-        (@($plan.steps | ForEach-Object id) -contains 'remove-temporary-binding') | Should Be $false
+        (@($plan.blockers | ForEach-Object code) -contains 'external_binding_observation_untrusted') | Should -Be $true
+        (@($plan.steps | ForEach-Object id) -contains 'remove-temporary-binding') | Should -Be $false
     }
 
     It 'gives every planned system mutation an explicit rollback operation' {
         $manifest = New-SyntheticRelease (Join-Path $TestDrive 'transaction') -IncludeAuthorization
         $plan = New-TestPlan -ReleaseManifest $manifest
         $mutations = @($plan.steps | Where-Object mutates_system)
-        $mutations.Count | Should BeGreaterThan 0
+        $mutations.Count | Should -BeGreaterThan 0
         foreach ($step in $mutations) {
-            (-not [string]::IsNullOrWhiteSpace([string]$step.rollback.operation)) | Should Be $true
+            (-not [string]::IsNullOrWhiteSpace([string]$step.rollback.operation)) | Should -Be $true
         }
-        (@($plan.blockers.code) -contains 'non_transactional_step') | Should Be $false
+        (@($plan.blockers.code) -contains 'non_transactional_step') | Should -Be $false
     }
 
     It 'preserves the exact Repair snapshot metadata in the committed state journal' {
@@ -184,10 +190,10 @@ Describe 'PS5 Camera transactional installer planner' {
         $plan = New-TestPlan -Action Repair -ReleaseManifest $manifest
         $snapshotStep = @($plan.steps | Where-Object id -eq 'snapshot-installed-state')[0]
         $commitStep = @($plan.steps | Where-Object id -eq 'commit-state')[0]
-        $null -eq $snapshotStep.arguments.snapshot | Should Be $false
-        ($snapshotStep.arguments.snapshot | ConvertTo-Json -Compress) | Should Be ($commitStep.arguments.document.rollback_snapshot | ConvertTo-Json -Compress)
-        $commitStep.arguments.document.status | Should Be 'rollback_available'
-        (Test-PathInsideRoot (Join-Path $TestDrive 'ProgramData\PS5 Camera\rollback') $commitStep.arguments.document.rollback_snapshot.path) | Should Be $true
+        $null -eq $snapshotStep.arguments.snapshot | Should -Be $false
+        ($snapshotStep.arguments.snapshot | ConvertTo-Json -Compress) | Should -Be ($commitStep.arguments.document.rollback_snapshot | ConvertTo-Json -Compress)
+        $commitStep.arguments.document.status | Should -Be 'rollback_available'
+        (Test-PathInsideRoot (Join-Path $TestDrive 'ProgramData\PS5 Camera\rollback') $commitStep.arguments.document.rollback_snapshot.path) | Should -Be $true
     }
 
     It 'never reaches ready without a reviewed cryptographic release format' {
@@ -195,24 +201,24 @@ Describe 'PS5 Camera transactional installer planner' {
         $null = New-OwnedInstallerState
         foreach ($action in @('Install', 'Repair', 'Uninstall', 'Rollback')) {
             $plan = New-TestPlan -Action $action -ReleaseManifest $manifest
-            (@($plan.blockers | ForEach-Object code) -contains 'release_authenticity_format_undefined') | Should Be $true
-            $plan.status | Should Be 'blocked'
+            (@($plan.blockers | ForEach-Object code) -contains 'release_authenticity_format_undefined') | Should -Be $true
+            $plan.status | Should -Be 'blocked'
         }
     }
 
     It 'keeps independent fail-closed gates for staging, reparse points and TOCTOU' {
         $plan = New-TestPlan
         $codes = @($plan.blockers | ForEach-Object code)
-        ($codes -contains 'safe_staging_not_implemented') | Should Be $true
-        ($codes -contains 'reparse_point_defense_not_implemented') | Should Be $true
-        ($codes -contains 'artifact_toctou_defense_not_implemented') | Should Be $true
+        ($codes -contains 'safe_staging_not_implemented') | Should -Be $true
+        ($codes -contains 'reparse_point_defense_not_implemented') | Should -Be $true
+        ($codes -contains 'artifact_toctou_defense_not_implemented') | Should -Be $true
     }
 
     It 'parses manufacturer models and macros while ignoring commented hardware IDs' {
         $manifest = New-SyntheticRelease (Join-Path $TestDrive 'structural-inf') -IncludeAuthorization
         $inf = Join-Path (Split-Path -Parent $manifest) 'ps5cam-boot.inf'
         Add-Content -LiteralPath $inf -Value "`n; USB\VID_05A9&PID_058C is documentation only`n[Boot_Install.AddReg]`nHKR,,,0,`"Universal Serial Bus devices`"`n"
-        Test-InfScope $inf | Should Be $true
+        Test-InfScope $inf | Should -Be $true
     }
 
     It 'rejects a hidden additional manufacturer model after macro expansion' {
@@ -222,7 +228,7 @@ Describe 'PS5 Camera transactional installer planner' {
         $content = Get-Content -LiteralPath $inf -Raw
         $content = $content.Replace('[Manufacturer]', "[Manufacturer]`n%Provider%=OtherModels,NTamd64")
         [IO.File]::WriteAllText($inf, $content, [Text.UTF8Encoding]::new($false))
-        Test-InfScope $inf | Should Be $false
+        Test-InfScope $inf | Should -Be $false
     }
 
     It 'rejects extra roles and duplicate destination file names' {
@@ -234,16 +240,16 @@ Describe 'PS5 Camera transactional installer planner' {
         $document.artifacts[1].file_name = $document.artifacts[0].file_name
         $document | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifest -Encoding utf8NoBOM
         $plan = New-TestPlan -ReleaseManifest $manifest
-        (@($plan.blockers.code) -contains 'unexpected_release_role') | Should Be $true
-        (@($plan.blockers.code) -contains 'duplicate_release_file_name') | Should Be $true
+        (@($plan.blockers.code) -contains 'unexpected_release_role') | Should -Be $true
+        (@($plan.blockers.code) -contains 'duplicate_release_file_name') | Should -Be $true
     }
 
     It 'requires owned installer state for uninstall and rollback' {
         Remove-Item -LiteralPath (Join-Path $TestDrive 'ProgramData\PS5 Camera') -Recurse -Force -ErrorAction SilentlyContinue
         foreach ($action in @('Uninstall', 'Rollback')) {
             $plan = New-TestPlan -Action $action
-            (@($plan.blockers.code) -contains 'installer_state_missing') | Should Be $true
-            @($plan.steps | Where-Object operation -match 'driver').Count | Should Be 0
+            (@($plan.blockers.code) -contains 'installer_state_missing') | Should -Be $true
+            @($plan.steps | Where-Object operation -match 'driver').Count | Should -Be 0
         }
     }
 
@@ -259,8 +265,8 @@ Describe 'PS5 Camera transactional installer planner' {
         $document.previous_published_name = 'arbitrary.inf'
         $document | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $statePath -Encoding utf8NoBOM
         $plan = New-TestPlan -Action Uninstall
-        (@($plan.blockers.code) -contains 'install_root_ownership_mismatch') | Should Be $true
-        @($plan.steps).Count | Should Be 0
+        (@($plan.blockers.code) -contains 'install_root_ownership_mismatch') | Should -Be $true
+        @($plan.steps).Count | Should -Be 0
     }
 
     It 'rejects unsafe driver state, previous package and rollback snapshot fields independently' {
@@ -269,20 +275,20 @@ Describe 'PS5 Camera transactional installer planner' {
         $document.driver_state_path = (Join-Path $TestDrive 'foreign-driver-state.json')
         $document | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $statePath -Encoding utf8NoBOM
         $plan = New-TestPlan -Action Uninstall
-        (@($plan.blockers | ForEach-Object code) -contains 'driver_state_path_unsafe') | Should Be $true
+        (@($plan.blockers | ForEach-Object code) -contains 'driver_state_path_unsafe') | Should -Be $true
 
         $statePath = New-OwnedInstallerState
         $document = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
         $document.previous_published_name = 'not-an-oem-package.inf'
         $document | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $statePath -Encoding utf8NoBOM
         $plan = New-TestPlan -Action Uninstall
-        (@($plan.blockers | ForEach-Object code) -contains 'previous_published_name_invalid') | Should Be $true
+        (@($plan.blockers | ForEach-Object code) -contains 'previous_published_name_invalid') | Should -Be $true
 
         $statePath = New-OwnedInstallerState -StateStatus 'rollback_available' -RollbackSnapshot ([ordered]@{
                 schema_version = 1; kind = 'ps5camera-installer-rollback'; path = (Join-Path $TestDrive 'outside\snapshot')
             })
         $plan = New-TestPlan -Action Rollback
-        (@($plan.blockers | ForEach-Object code) -contains 'rollback_snapshot_path_unsafe') | Should Be $true
+        (@($plan.blockers | ForEach-Object code) -contains 'rollback_snapshot_path_unsafe') | Should -Be $true
     }
 
     It 'requires a known state status and rejects unknown lifecycle values' {
@@ -291,11 +297,11 @@ Describe 'PS5 Camera transactional installer planner' {
         $document.PSObject.Properties.Remove('status')
         $document | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $statePath -Encoding utf8NoBOM
         $plan = New-TestPlan -Action Uninstall
-        (@($plan.blockers | ForEach-Object code) -contains 'installer_state_structure_invalid') | Should Be $true
+        (@($plan.blockers | ForEach-Object code) -contains 'installer_state_structure_invalid') | Should -Be $true
 
         $statePath = New-OwnedInstallerState -StateStatus 'user_supplied_ready'
         $plan = New-TestPlan -Action Uninstall
-        (@($plan.blockers | ForEach-Object code) -contains 'installer_state_status_invalid') | Should Be $true
+        (@($plan.blockers | ForEach-Object code) -contains 'installer_state_status_invalid') | Should -Be $true
     }
 
     It 'plans rollback only from authenticated-state metadata, without a new release input' {
@@ -308,24 +314,24 @@ Describe 'PS5 Camera transactional installer planner' {
         $null = New-OwnedInstallerState -StateStatus 'rollback_available' -RollbackSnapshot $snapshot
         $plan = New-TestPlan -Action Rollback
         $rollback = @($plan.steps | Where-Object id -eq 'rollback-owned-transaction')[0]
-        $rollback.arguments.snapshot | Should Be $snapshot.path
-        $null -eq $plan.release_root | Should Be $true
-        (@($plan.blockers | ForEach-Object code) -contains 'authenticated_state_format_undefined') | Should Be $true
+        $rollback.arguments.snapshot | Should -Be $snapshot.path
+        $null -eq $plan.release_root | Should -Be $true
+        (@($plan.blockers | ForEach-Object code) -contains 'authenticated_state_format_undefined') | Should -Be $true
     }
 
     It 'does not perform binding inspection for Uninstall or Rollback' {
         $null = New-OwnedInstallerState
         foreach ($action in @('Uninstall', 'Rollback')) {
             $plan = New-TestPlan -Action $action -BindingObservationPath (Join-Path $TestDrive 'does-not-exist.json')
-            (@($plan.blockers | ForEach-Object code) -contains 'binding_observation_missing') | Should Be $false
-            (@($plan.blockers | ForEach-Object code) -contains 'test_only_binding_inspection_skipped') | Should Be $false
-            $null -eq $plan.binding_evidence | Should Be $true
+            (@($plan.blockers | ForEach-Object code) -contains 'binding_observation_missing') | Should -Be $false
+            (@($plan.blockers | ForEach-Object code) -contains 'test_only_binding_inspection_skipped') | Should -Be $false
+            $null -eq $plan.binding_evidence | Should -Be $true
         }
     }
 
     It 'declares and runs on PowerShell 7 or newer' {
-        ($PSVersionTable.PSVersion.Major -ge 7) | Should Be $true
-        (Test-Path -LiteralPath (Join-Path $InstallerRoot 'InstallerCoordinator.psd1')) | Should Be $true
+        ($PSVersionTable.PSVersion.Major -ge 7) | Should -Be $true
+        (Test-Path -LiteralPath (Join-Path $InstallerRoot 'InstallerCoordinator.psd1')) | Should -Be $true
     }
 }
 
@@ -339,7 +345,7 @@ InModuleScope InstallerCoordinator {
             Assert-MockCalled Invoke-SignToolVerification -Times 1 -ParameterFilter { $ToolArguments -contains '/pa' -and $ToolArguments -notcontains '/c' }
             Assert-MockCalled Invoke-SignToolVerification -Times 1 -ParameterFilter { $ToolArguments -contains '/kp' }
             Assert-MockCalled Invoke-SignToolVerification -Times 1 -ParameterFilter { $ToolArguments -contains '/c' -and $ToolArguments -contains 'package.inf' }
-            $blockers.Count | Should Be 0
+            $blockers.Count | Should -Be 0
         }
 
         It 'reports kernel-policy failure independently of Authenticode and membership' {
@@ -347,17 +353,17 @@ InModuleScope InstallerCoordinator {
             Mock Invoke-SignToolVerification { -not ($ToolArguments -contains '/kp') }
             $blockers = [System.Collections.Generic.List[object]]::new()
             $null = Test-CatalogTrust 'package.cat' 'package.inf' $blockers
-            (@($blockers | ForEach-Object code) -contains 'catalog_kernel_policy_invalid') | Should Be $true
-            (@($blockers | ForEach-Object code) -contains 'signed_catalog_invalid') | Should Be $false
-            (@($blockers | ForEach-Object code) -contains 'catalog_membership_invalid') | Should Be $false
+            (@($blockers | ForEach-Object code) -contains 'catalog_kernel_policy_invalid') | Should -Be $true
+            (@($blockers | ForEach-Object code) -contains 'signed_catalog_invalid') | Should -Be $false
+            (@($blockers | ForEach-Object code) -contains 'catalog_membership_invalid') | Should -Be $false
         }
 
         It 'rejects null, scalar and empty-operation rollback values' {
             foreach ($rollback in @($null, 'undo', [ordered]@{}, [ordered]@{ operation = ' ' })) {
                 $step = [ordered]@{ id = 'unsafe'; mutates_system = $true; rollback = $rollback }
-                (Test-RollbackInvariant $step) | Should Be $false
+                (Test-RollbackInvariant $step) | Should -Be $false
             }
-            (Test-RollbackInvariant ([ordered]@{ id = 'safe'; mutates_system = $true; rollback = [ordered]@{ operation = 'undo' } })) | Should Be $true
+            (Test-RollbackInvariant ([ordered]@{ id = 'safe'; mutates_system = $true; rollback = [ordered]@{ operation = 'undo' } })) | Should -Be $true
         }
     }
 }
