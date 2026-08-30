@@ -113,17 +113,34 @@ jobs:
           if (-not (Test-Path -LiteralPath $setup -PathType Leaf)) { throw 'Setup executable was not produced.' }
           "setup=$setup" >> $env:GITHUB_OUTPUT
       - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
+        shell: pwsh
+        env:
           # This repository's GITHUB_TOKEN cannot create releases even with
           # contents: write. The maintainer token is stored only as an Actions
-          # Secret and is used solely by this publishing action.
-          token: ${{ secrets.PS5CAM_RELEASE_TOKEN }}
-          tag_name: v${{ steps.version.outputs.version }}
-          target_commitish: ${{ steps.version.outputs.revision }}
-          name: PS5 Camera Windows Driver v${{ steps.version.outputs.version }}
-          generate_release_notes: true
-          files: ${{ steps.build.outputs.setup }}
+          # Secret and is used solely by this publishing step.
+          GH_TOKEN: ${{ secrets.PS5CAM_RELEASE_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
+            throw 'PS5CAM_RELEASE_TOKEN is missing; release publishing is intentionally blocked.'
+          }
+          $tag = '${{ steps.version.outputs.tag }}'
+          $setup = '${{ steps.build.outputs.setup }}'
+          $repository = '${{ github.repository }}'
+          & gh release view $tag --repo $repository 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            & gh release upload $tag $setup --repo $repository --clobber
+          }
+          elseif ($LASTEXITCODE -eq 1) {
+            & gh release create $tag $setup --repo $repository --target '${{ steps.version.outputs.revision }}' `
+              --title "PS5 Camera Windows Driver v${{ steps.version.outputs.version }}" --generate-notes
+          }
+          else {
+            throw "Unable to query GitHub Release $tag (gh exit code $LASTEXITCODE)."
+          }
+          if ($LASTEXITCODE -ne 0) {
+            throw "Unable to publish $setup to GitHub Release $tag."
+          }
       - name: Remove imported release signer
         if: always()
         shell: pwsh
