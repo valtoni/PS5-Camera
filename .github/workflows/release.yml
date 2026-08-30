@@ -45,10 +45,14 @@ jobs:
           }
           "version=$version" >> $env:GITHUB_OUTPUT
       - name: Validate signer and WDK prerequisites
+        id: signer
         shell: pwsh
         run: |
-          $certificate = Get-ChildItem "Cert:\CurrentUser\My\${env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT}" -ErrorAction Stop
-          if (-not $certificate.HasPrivateKey) { throw 'The configured development signing certificate has no private key.' }
+          $certificate = @(Get-ChildItem -Path 'Cert:\CurrentUser\My', 'Cert:\LocalMachine\My' -ErrorAction SilentlyContinue |
+            Where-Object { $_.Thumbprint -eq $env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT -and $_.HasPrivateKey })
+          if ($certificate.Count -ne 1) { throw 'The configured development signing certificate was not found uniquely with its private key.' }
+          $store = if ($certificate[0].PSParentPath -like '*LocalMachine*') { 'machine' } else { 'user' }
+          "certificate_store=$store" >> $env:GITHUB_OUTPUT
       - name: Verify source
         shell: pwsh
         run: |
@@ -70,7 +74,9 @@ jobs:
           $release = Join-Path $env:RUNNER_TEMP "ps5cam-release-$run"
           $output = Join-Path $env:RUNNER_TEMP "ps5cam-setup-$run"
           ./windows/package/package-pipeline.ps1 -Action Catalog -Execute -StagingDirectory $catalog -ConfirmHardwareId 'USB\VID_05A9&PID_0580'
-          ./windows/package/package-pipeline.ps1 -Action TestSign -Execute -StagingDirectory $catalog -CertificateThumbprint $env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT -ConfirmHardwareId 'USB\VID_05A9&PID_0580'
+          $testSign = @('-Action', 'TestSign', '-Execute', '-StagingDirectory', $catalog, '-CertificateThumbprint', $env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT, '-ConfirmHardwareId', 'USB\VID_05A9&PID_0580')
+          if ('${{ steps.signer.outputs.certificate_store }}' -eq 'machine') { $testSign += '-MachineCertificateStore' }
+          & ./windows/package/package-pipeline.ps1 @testSign
           cargo build --release --locked -p ps5cam-service -p ps5cam-diagnostics
           ./windows/package/build-development-release.ps1 -OutputDirectory $release -ReleaseVersion $version -SourceRevision $revision -SourceDateEpoch $epoch -CatalogDirectory $catalog -ManifestCertificateThumbprint $env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT
           ./windows/package/build-single-file-setup.ps1 -ReleaseDirectory $release -OutputDirectory $output
