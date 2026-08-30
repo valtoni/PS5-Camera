@@ -102,8 +102,7 @@ jobs:
           $release = Join-Path $env:RUNNER_TEMP "ps5cam-release-$run"
           $output = Join-Path $env:RUNNER_TEMP "ps5cam-setup-$run"
           ./windows/package/package-pipeline.ps1 -Action Catalog -Execute -StagingDirectory $catalog -ConfirmHardwareId 'USB\VID_05A9&PID_0580'
-          $testSign = @('-Action', 'TestSign', '-Execute', '-StagingDirectory', $catalog, '-CertificateThumbprint', $env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT, '-ConfirmHardwareId', 'USB\VID_05A9&PID_0580')
-          & ./windows/package/package-pipeline.ps1 @testSign
+          ./windows/package/package-pipeline.ps1 -Action TestSign -Execute -StagingDirectory $catalog -CertificateThumbprint $env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT -ConfirmHardwareId 'USB\VID_05A9&PID_0580'
           cargo build --release --locked -p ps5cam-service -p ps5cam-diagnostics
           ./windows/package/build-development-release.ps1 -OutputDirectory $release -ReleaseVersion $version -SourceRevision $revision -SourceDateEpoch $epoch -CatalogDirectory $catalog -ManifestCertificateThumbprint $env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT
           ./windows/package/build-single-file-setup.ps1 -ReleaseDirectory $release -OutputDirectory $output
