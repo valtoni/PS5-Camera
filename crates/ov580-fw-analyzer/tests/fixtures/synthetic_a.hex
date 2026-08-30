@@ -1,0 +1,7 @@
+# Synthetic fixture only. Whitespace and comments are ignored by the test decoder.
+# zero fill, ASCII "OV580 TEST", UTF-16LE "CAMERA", USB device descriptor
+00 00 00 00 00 00 00 00
+4f 56 35 38 30 20 54 45 53 54 00 00
+43 00 41 00 4d 00 45 00 52 00 41 00 00 00
+12 01 00 02 ef 02 01 40 a9 05 80 05 00 01 01 02 03 01
+aa aa aa aa aa aa aa aa

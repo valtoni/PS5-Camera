@@ -1,0 +1,21 @@
+[package]
+name = "ps5cam-loader-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "ps5cam-loader"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+ov580-loader = { path = "../ov580-loader" }
+ps5cam-usb = { path = "../ps5cam-usb" }
+rusb = "=0.9.4"
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true

@@ -1,0 +1,87 @@
+name: Build and publish Windows setup
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Semantic version without the v prefix (for example 1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    # The driver is signed with the development certificate held only by the
+    # project's dedicated Windows/WDK runner.  Keeping this job self-hosted
+    # prevents a private signing key from being copied to GitHub-hosted VMs.
+    runs-on: [self-hosted, Windows, X64, ps5cam-signing]
+    env:
+      PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT: EDAF55A1E4AE0C8C197988F7286626BD51228CA2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Resolve and validate release version
+        id: version
+        shell: pwsh
+        run: |
+          $version = if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            '${{ inputs.release_version }}'
+          } else {
+            '${{ github.ref_name }}'.Substring(1)
+          }
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
+            throw "Release version is invalid: $version"
+          }
+          if ($version -ne '1.0.0') {
+            throw "This source tree is version 1.0.0; refusing to publish $version."
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+      - name: Validate signer and WDK prerequisites
+        shell: pwsh
+        run: |
+          $certificate = Get-ChildItem "Cert:\CurrentUser\My\${env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT}" -ErrorAction Stop
+          if (-not $certificate.HasPrivateKey) { throw 'The configured development signing certificate has no private key.' }
+      - name: Verify source
+        shell: pwsh
+        run: |
+          cargo fmt --all -- --check
+          cargo test --workspace --all-targets --locked
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          ./windows/package/test-package.ps1
+          ./windows/installer/test-installer.ps1
+      - name: Build signed setup
+        id: build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '${{ steps.version.outputs.version }}'
+          $revision = (git rev-parse HEAD).Trim()
+          $epoch = (git log -1 --format=%ct).Trim()
+          $run = "$version-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $catalog = Join-Path $env:RUNNER_TEMP "ps5cam-catalog-$run"
+          $release = Join-Path $env:RUNNER_TEMP "ps5cam-release-$run"
+          $output = Join-Path $env:RUNNER_TEMP "ps5cam-setup-$run"
+          ./windows/package/package-pipeline.ps1 -Action Catalog -Execute -StagingDirectory $catalog -ConfirmHardwareId 'USB\VID_05A9&PID_0580'
+          ./windows/package/package-pipeline.ps1 -Action TestSign -Execute -StagingDirectory $catalog -CertificateThumbprint $env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT -ConfirmHardwareId 'USB\VID_05A9&PID_0580'
+          cargo build --release --locked -p ps5cam-service -p ps5cam-diagnostics
+          ./windows/package/build-development-release.ps1 -OutputDirectory $release -ReleaseVersion $version -SourceRevision $revision -SourceDateEpoch $epoch -CatalogDirectory $catalog -ManifestCertificateThumbprint $env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT
+          ./windows/package/build-single-file-setup.ps1 -ReleaseDirectory $release -OutputDirectory $output
+          $setup = Join-Path $output 'PS5-Camera-Setup.exe'
+          if (-not (Test-Path -LiteralPath $setup -PathType Leaf)) { throw 'Setup executable was not produced.' }
+          "setup=$setup" >> $env:GITHUB_OUTPUT
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: PS5 Camera Windows Driver v${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          files: ${{ steps.build.outputs.setup }}

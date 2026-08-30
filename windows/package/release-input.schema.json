@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/valtoni/PS5-Camera/windows/package/release-input.schema.json",
+  "title": "PS5 Camera Windows release inputs",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "releaseVersion",
+    "sourceRevision",
+    "sourceDateEpoch",
+    "packageValidation",
+    "artifacts"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "releaseVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$" },
+    "sourceRevision": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" },
+    "sourceDateEpoch": { "type": "integer", "minimum": 0 },
+    "packageValidation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["infVerifPassed", "osTargets"],
+      "properties": {
+        "infVerifPassed": { "const": true },
+        "osTargets": {
+          "type": "array",
+          "items": { "enum": ["10_GE_X64", "10_GE_ARM64"] },
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role", "path", "fileName", "sha256"],
+        "properties": {
+          "role": {
+            "enum": [
+              "driver_inf",
+              "signed_catalog",
+              "authorized_firmware",
+              "windows_service",
+              "diagnostic_cli",
+              "installer",
+              "installer_engine",
+              "license"
+            ]
+          },
+          "path": { "type": "string", "minLength": 1 },
+          "fileName": { "type": "string", "pattern": "^[^\\\\/:*?\"<>|]+$" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+          "version": { "type": "string" },
+          "authorization": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["status", "cleanRoom", "redistributionAllowed", "license", "source", "approvalReference"],
+            "properties": {
+              "status": { "const": "approved" },
+              "cleanRoom": { "type": "boolean" },
+              "redistributionAllowed": { "const": true },
+              "license": { "type": "string", "minLength": 1 },
+              "source": { "type": "string", "minLength": 1 },
+              "approvalReference": { "type": "string", "minLength": 1 },
+              "redistributionBasis": { "enum": ["clean_room", "third_party_mit_reference"] },
+              "sourceCommit": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" },
+              "noticeFile": { "type": "string", "pattern": "^[^\\\\/:*?\"<>|]+$" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

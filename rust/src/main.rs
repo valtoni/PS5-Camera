@@ -5,33 +5,38 @@ fn main() {
 
     // See `libusb` output in documentation for where these come from
     const USB_VENDOR_ID: u16 = 0x05a9;
-    const USB_PRODUCT_ID_BOOTLOADER: u16 = 0x0580;  // USB Boot mode
-    const USB_PRODUCT_ID_FIRMWARE: u16 = 0x058c;    // USB Camera mode (already programmed)
+    const USB_PRODUCT_ID_BOOTLOADER: u16 = 0x0580; // USB Boot mode
+    const USB_PRODUCT_ID_FIRMWARE: u16 = 0x058c; // USB Camera mode (already programmed)
 
     // Try to open device in bootloader mode, or inform if already programmed
-    let libusb_dev_handle = match rusb::open_device_with_vid_pid(USB_VENDOR_ID, USB_PRODUCT_ID_BOOTLOADER) {
-        Some(handle) => {
-            println!("Found device in bootloader mode. Starting firmware upload...");
-            handle
-        }
-        None => {
-            // Check if device is already in camera mode
-            match rusb::open_device_with_vid_pid(USB_VENDOR_ID, USB_PRODUCT_ID_FIRMWARE) {
-                Some(camera_handle) => {
-                    // Explicitly close the device handle before exiting, since process::exit skips Drop
-                    drop(camera_handle);
-                    eprintln!("Camera is already programmed and working (Mode: USB Camera-OV580)");
-                    eprintln!("No firmware update needed.");
-                    std::process::exit(0);
-                }
-                None => {
-                    eprintln!("Error: PS5 Camera not found!");
-                    eprintln!("Expected: VID:PID = 05a9:0580 (bootloader) or 05a9:058c (camera)");
-                    std::process::exit(1);
+    let libusb_dev_handle =
+        match rusb::open_device_with_vid_pid(USB_VENDOR_ID, USB_PRODUCT_ID_BOOTLOADER) {
+            Some(handle) => {
+                println!("Found device in bootloader mode. Starting firmware upload...");
+                handle
+            }
+            None => {
+                // Check if device is already in camera mode
+                match rusb::open_device_with_vid_pid(USB_VENDOR_ID, USB_PRODUCT_ID_FIRMWARE) {
+                    Some(camera_handle) => {
+                        // Explicitly close the device handle before exiting, since process::exit skips Drop
+                        drop(camera_handle);
+                        eprintln!(
+                            "Camera is already programmed and working (Mode: USB Camera-OV580)"
+                        );
+                        eprintln!("No firmware update needed.");
+                        std::process::exit(0);
+                    }
+                    None => {
+                        eprintln!("Error: PS5 Camera not found!");
+                        eprintln!(
+                            "Expected: VID:PID = 05a9:0580 (bootloader) or 05a9:058c (camera)"
+                        );
+                        std::process::exit(1);
+                    }
                 }
             }
-        }
-    };
+        };
 
     // Device only has one USB 'endpoint'/interface (see `lsusb` output)
     const USB_INTERFACE_NUM: u8 = 0;
@@ -88,7 +93,7 @@ fn main() {
     /* Goes from 0 to 65536, incrementing by 512. Then, starts over at 0, and continues incrementing.
     This is again something that was taken from OrbisEyeCam
     Corresponds to 'wValue' in standard USB semantics */
-    let mut w_value = std::num::Wrapping(std::u16::MAX);
+    let mut w_value = std::num::Wrapping(u16::MAX);
     w_value.0 = 0;
 
     while file_byte_idx < firmware_file_len {
@@ -99,7 +104,7 @@ fn main() {
 
         let pkt_end_idx: usize = file_byte_idx + (pkt_size as usize);
 
-        let cur_transaction_idx = if file_byte_idx < (std::u16::MAX as usize) {
+        let cur_transaction_idx = if file_byte_idx < (u16::MAX as usize) {
             lower_transaction_idx
         } else {
             upper_transaction_idx
@@ -111,7 +116,7 @@ fn main() {
                 0x0,
                 w_value.0,
                 cur_transaction_idx,
-                &firmware_file_as_bytes[file_byte_idx as usize..pkt_end_idx],
+                &firmware_file_as_bytes[file_byte_idx..pkt_end_idx],
                 std::time::Duration::ZERO,
             )
             .unwrap();

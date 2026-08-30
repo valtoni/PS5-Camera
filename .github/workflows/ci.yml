@@ -1,0 +1,33 @@
+name: Verify
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows / Rust and installer tests
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Test Rust workspace
+        run: cargo test --workspace --all-targets --locked
+      - name: Lint Rust workspace
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Test driver package guards
+        shell: pwsh
+        run: ./windows/package/test-package.ps1
+      - name: Test installer engine
+        shell: pwsh
+        run: ./windows/installer/test-installer.ps1

@@ -1,0 +1,25 @@
+[package]
+name = "ps5cam-diagnostics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Read-only Windows readiness diagnostics for the PS5 CFI-ZEY1 camera"
+
+[dependencies]
+clap.workspace = true
+ps5cam-usb = { path = "../ps5cam-usb" }
+serde.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_System_Services"] }
+
+[lib]
+name = "ps5cam_diagnostics"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ps5cam-diagnostics"
+path = "src/main.rs"

@@ -1,0 +1,28 @@
+[package]
+name = "ps5cam-service"
+version.workspace = true
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/valtoni/PS5-Camera"
+rust-version = "1.85"
+description = "Deterministic Windows service core for the PS5 CFI-ZEY1 camera"
+
+[dependencies]
+ov580-loader = { path = "../ov580-loader" }
+ps5cam-usb = { path = "../ps5cam-usb" }
+rusb = "=0.9.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+thiserror = "2.0"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "=0.61.2", features = ["Win32_Devices_Usb", "Win32_Foundation", "Win32_Security", "Win32_System_EventLog", "Win32_System_Services", "Win32_UI_WindowsAndMessaging"] }
+
+[lib]
+name = "ps5cam_service"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ps5cam-service"
+path = "src/main.rs"

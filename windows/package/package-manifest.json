@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "packageId": "org.ps5camera.boot.winusb",
+  "version": "1.0.0",
+  "infFile": "ps5cam-boot.inf",
+  "targetHardwareIds": [
+    "USB\\VID_05A9&PID_0580"
+  ],
+  "supportedArchitectures": [
+    "amd64",
+    "arm64"
+  ],
+  "deviceInterfaceGuid": "{ABB9454F-E674-4620-8C6E-49A5777EB078}",
+  "functionDriver": {
+    "source": "windows_inbox",
+    "inf": "winusb.inf",
+    "installSection": "WINUSB.NT",
+    "servicesSection": "WINUSB.NT.Services"
+  },
+  "catalog": {
+    "status": "not_generated",
+    "file": "ps5cam-boot.cat",
+    "osTargets": [
+      "10_GE_X64",
+      "10_GE_ARM64"
+    ]
+  },
+  "signature": {
+    "status": "not_signed",
+    "digestAlgorithm": "SHA256"
+  },
+  "customService": {
+    "status": "not_included"
+  },
+  "firmware": {
+    "status": "not_included"
+  }
+}

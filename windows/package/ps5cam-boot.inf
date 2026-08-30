@@ -1,0 +1,38 @@
+; Declarative WinUSB binding for the PS5 camera OV580 boot mode.
+; A catalog is intentionally absent until a real package is produced and signed.
+
+[Version]
+Signature   = "$Windows NT$"
+Class       = USBDevice
+ClassGuid   = {88BAE032-5A81-49F0-BC3D-A4FF138216D6}
+Provider    = %ProviderName%
+DriverVer   = 08/29/2026,1.0.0.0
+PnpLockdown = 1
+
+[Manufacturer]
+%ProviderName% = Models,NTamd64,NTarm64
+
+[Models.NTamd64]
+%BootDeviceName% = Boot_Install,USB\VID_05A9&PID_0580
+
+[Models.NTarm64]
+%BootDeviceName% = Boot_Install,USB\VID_05A9&PID_0580
+
+[Boot_Install]
+Include = winusb.inf
+Needs   = WINUSB.NT
+
+[Boot_Install.Services]
+Include = winusb.inf
+Needs   = WINUSB.NT.Services
+
+[Boot_Install.HW]
+AddReg = Boot_Interface_AddReg
+
+[Boot_Interface_AddReg]
+HKR,,DeviceInterfaceGUIDs,0x00010000,%DeviceInterfaceGuid%
+
+[Strings]
+ProviderName        = "PS5 Camera Clean-room Project"
+BootDeviceName      = "PS5 Camera OV580 Boot Interface"
+DeviceInterfaceGuid = "{ABB9454F-E674-4620-8C6E-49A5777EB078}"

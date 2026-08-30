@@ -1,0 +1,20 @@
+[package]
+name = "ps5cam-usb"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "USB discovery and descriptor probing for the PS5 CFI-ZEY1 camera"
+
+[dependencies]
+rusb.workspace = true
+serde.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "=0.61.2", features = ["Win32_Devices_DeviceAndDriverInstallation"] }

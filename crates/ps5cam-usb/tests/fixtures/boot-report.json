@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "captured_at_unix_ms": 0,
+  "host": {
+    "os": "windows",
+    "architecture": "x86_64",
+    "os_version": "fixture",
+    "libusb_version": "1.0.0.0"
+  },
+  "status": "boot",
+  "devices": [
+    {
+      "mode": "boot",
+      "locator": {
+        "controller_id": "libusb-bus-2",
+        "bus_number": 2,
+        "device_address": 5,
+        "port_number": 4,
+        "port_path": [4, 4, 4],
+        "speed": "super"
+      },
+      "descriptor": {
+        "length": 18,
+        "descriptor_type": 1,
+        "usb_version": "3.0.0",
+        "device_version": "1.0.0",
+        "class_code": 0,
+        "sub_class_code": 0,
+        "protocol_code": 0,
+        "max_packet_size_0": 9,
+        "vendor_id": 1449,
+        "product_id": 1408,
+        "manufacturer_string_index": 1,
+        "product_string_index": 2,
+        "serial_number_string_index": null,
+        "num_configurations": 1
+      },
+      "strings": {
+        "language_id": 1033,
+        "manufacturer": "OmniVision Technologies, Inc.",
+        "product": "USB Boot",
+        "serial_number": null
+      },
+      "configurations": [],
+      "raw_descriptors": [],
+      "descriptor_dump": {
+        "format": "PS5CAMD1",
+        "schema_version": 1,
+        "file_name": "05a9-0580-bus002-port-4-4-4.ps5cam-descriptors.bin",
+        "record_count": 0,
+        "length": 12,
+        "sha256": "fixture"
+      },
+      "issues": []
+    }
+  ],
+  "issues": []
+}

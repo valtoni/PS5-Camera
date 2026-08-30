@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "artifact": "21.01-03.20.00.04-00.00.00.bin",
+  "sha256": "10af1aee76fe0057a88db7ebf5f3ebf32430633effb93722be4cd0a9ed4fce54",
+  "size": 68948,
+  "license": "MIT",
+  "copyright": "Copyright (c) 2021 prosperodev",
+  "sourceRepository": "https://github.com/prosperodev/hdcamera",
+  "sourceCommit": "8773610978d5a4d91a6a6d8063d48a4f3afcfe5b",
+  "sourcePath": "firmware/21.01-03.20.00.04-00.00.00.bin",
+  "licensePath": "LICENSE",
+  "redistributionBasis": "third_party_mit_reference",
+  "notice": "This package records the upstream MIT grant for the referenced artifact. It does not claim Sony authorship, clean-room origin, or an independent chain-of-title verification."
+}

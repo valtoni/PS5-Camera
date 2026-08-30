@@ -1,0 +1,13 @@
+[package]
+name = "ov580-loader"
+version.workspace = true
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/valtoni/PS5-Camera"
+rust-version = "1.85"
+description = "Validated OV580 firmware upload and re-enumeration protocol"
+
+[dependencies]
+ps5cam-usb = { path = "../ps5cam-usb" }
+rusb = "=0.9.4"
+thiserror = "2.0"
