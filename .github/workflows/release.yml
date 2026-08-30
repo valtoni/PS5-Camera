@@ -40,8 +40,8 @@ jobs:
           if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
             throw "Release version is invalid: $version"
           }
-          if ($version -ne '1.0.0') {
-            throw "This source tree is version 1.0.0; refusing to publish $version."
+          if ($version -ne '1.0.1') {
+            throw "This source tree is version 1.0.1; refusing to publish $version."
           }
           "version=$version" >> $env:GITHUB_OUTPUT
       - name: Validate signer and WDK prerequisites

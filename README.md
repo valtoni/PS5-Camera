@@ -37,7 +37,7 @@ PS5 HD Camera in boot mode (05A9:0580)
 
 Firmware is not written to the camera. After power is removed or the cable is unplugged, it returns to boot mode; the service uploads the firmware again on the next connection.
 
-## V1.0.0 status
+## V1.0.1 status
 
 - Automatic firmware upload on connection and reconnection.
 - UVC video validated at `1920×1080 @30` and stereo `3840×1080 @30`.

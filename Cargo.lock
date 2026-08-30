@@ -218,7 +218,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "ov580-fw-analyzer"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "clap",
  "serde",
@@ -229,7 +229,7 @@ dependencies = [
 
 [[package]]
 name = "ov580-loader"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "ps5cam-usb",
  "rusb",
@@ -253,14 +253,14 @@ dependencies = [
 
 [[package]]
 name = "ps5_camera_firmware_loader"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "rusb",
 ]
 
 [[package]]
 name = "ps5cam-diagnostics"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "clap",
  "ps5cam-usb",
@@ -271,7 +271,7 @@ dependencies = [
 
 [[package]]
 name = "ps5cam-loader-cli"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "clap",
  "ov580-loader",
@@ -285,7 +285,7 @@ dependencies = [
 
 [[package]]
 name = "ps5cam-probe"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "clap",
  "ps5cam-usb",
@@ -295,7 +295,7 @@ dependencies = [
 
 [[package]]
 name = "ps5cam-service"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "ov580-loader",
  "ps5cam-usb",
@@ -309,14 +309,14 @@ dependencies = [
 
 [[package]]
 name = "ps5cam-setup"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "windows-sys",
 ]
 
 [[package]]
 name = "ps5cam-usb"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "rusb",
  "serde",
@@ -328,7 +328,7 @@ dependencies = [
 
 [[package]]
 name = "ps5cam-uvc"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "clap",
  "serde",
