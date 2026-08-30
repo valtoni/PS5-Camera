@@ -70,7 +70,7 @@ gh auth login
 .\windows\package\configure-github-release-signing.ps1 -Repository valtoni/PS5-Camera -DispatchReleaseVersion 1.0.1
 ```
 
-The helper generates a PFX password locally, writes `PS5CAM_SIGNING_PFX_BASE64` and `PS5CAM_SIGNING_PFX_PASSWORD` as Actions Secrets, and can dispatch a tagged release. A manual release run checks out the existing `v<version>` tag before building, so it produces the tagged source rather than the workflow branch.
+The helper generates a PFX password locally and writes `PS5CAM_SIGNING_PFX_BASE64`, `PS5CAM_SIGNING_PFX_PASSWORD`, and the authenticated repository release token `PS5CAM_RELEASE_TOKEN` as Actions Secrets. A manual release run uses the current, reviewed release automation from `master`, records the existing `v<version>` source revision in the manifest, and produces the same tagged product sources.
 
 ## Original project
 

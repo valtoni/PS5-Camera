@@ -23,6 +23,7 @@ $ErrorActionPreference = 'Stop'
 
 $pfxSecretName = 'PS5CAM_SIGNING_PFX_BASE64'
 $passwordSecretName = 'PS5CAM_SIGNING_PFX_PASSWORD'
+$releaseTokenSecretName = 'PS5CAM_RELEASE_TOKEN'
 $normalizedThumbprint = $CertificateThumbprint.Replace(' ', '').ToUpperInvariant()
 
 function New-RandomPfxPassword {
@@ -76,7 +77,7 @@ if (-not $certificate.HasPrivateKey) {
     throw 'The development signing certificate has no accessible private key.'
 }
 
-if (-not $PSCmdlet.ShouldProcess($Repository, "replace $pfxSecretName and $passwordSecretName Actions Secrets")) {
+if (-not $PSCmdlet.ShouldProcess($Repository, "replace $pfxSecretName, $passwordSecretName, and $releaseTokenSecretName Actions Secrets")) {
     return
 }
 
@@ -94,9 +95,14 @@ try {
     }
     $passwordPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($PfxPassword)
     $plainPassword = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($passwordPointer)
+    $releaseToken = (& $githubCli auth token 2>$null | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($releaseToken)) {
+        throw 'GitHub CLI authentication must expose a repository token before release publishing can be configured.'
+    }
 
     Set-GitHubActionsSecret -GitHubCli $githubCli -SecretName $passwordSecretName -Value $plainPassword
     Set-GitHubActionsSecret -GitHubCli $githubCli -SecretName $pfxSecretName -Value $encodedPfx
+    Set-GitHubActionsSecret -GitHubCli $githubCli -SecretName $releaseTokenSecretName -Value $releaseToken
 
     $workflowDispatched = $false
     if (-not [string]::IsNullOrWhiteSpace($DispatchReleaseVersion)) {
@@ -108,7 +114,7 @@ try {
     [pscustomobject]@{
         repository = $Repository
         certificate_thumbprint = $normalizedThumbprint
-        configured_secrets = @($pfxSecretName, $passwordSecretName)
+        configured_secrets = @($pfxSecretName, $passwordSecretName, $releaseTokenSecretName)
         workflow_dispatched = $workflowDispatched
         dispatched_release_version = $DispatchReleaseVersion
     } | ConvertTo-Json -Depth 3
@@ -116,6 +122,7 @@ try {
 finally {
     $plainPassword = $null
     $encodedPfx = $null
+    $releaseToken = $null
     if ($passwordPointer -ne [IntPtr]::Zero) {
         [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($passwordPointer)
     }
