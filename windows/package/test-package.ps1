@@ -50,6 +50,11 @@ try {
         status = 'ok'
         scenarios = 4
     } | ConvertTo-Json
+
+    # The expected negative scenarios invoke a child PowerShell that exits 1.
+    # This script is dot-sourced by GitHub Actions, so clear that inherited native
+    # exit code only after every assertion has passed.
+    $global:LASTEXITCODE = 0
 }
 finally {
     if (Test-Path -LiteralPath $TestRoot) {
