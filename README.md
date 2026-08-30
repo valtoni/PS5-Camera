@@ -1,47 +1,57 @@
 # PS5 Camera Windows Driver
 
-Driver Windows em Rust para a **Sony PlayStation 5 HD Camera CFI-ZEY1**. A instalação entrega uma webcam UVC para Camera, OBS e aplicativos que usam o driver nativo do Windows.
+A Rust Windows driver stack for the **Sony PlayStation 5 HD Camera CFI-ZEY1**. It turns the camera into a UVC webcam for Windows Camera, OBS, and applications that use the native Windows camera driver.
 
-## Instalar
+## Install
 
-1. Baixe `PS5-Camera-Setup.exe` na [última release](https://github.com/valtoni/PS5-Camera/releases/latest).
-2. Execute o arquivo e siga o assistente de uma janela.
-3. Autorize o UAC quando o Windows solicitar.
-4. Conecte ou reconecte a câmera.
+1. Download `PS5-Camera-Setup.exe` from the [latest release](https://github.com/valtoni/PS5-Camera/releases/latest).
+2. Run it and follow the one-window wizard.
+3. Approve the UAC prompt when Windows asks.
+4. Connect or reconnect the camera.
 
-O instalador detecta o estado atual e oferece apenas as ações adequadas: instalar, reparar/reinstalar ou remover. Ele instala WinUSB exclusivamente para o bootloader `USB\\VID_05A9&PID_0580`, o serviço de upload e o diagnóstico. O dispositivo UVC final (`USB\\VID_05A9&PID_058C`) continua no driver de câmera já incluído no Windows.
+The installer detects the current state and only offers the appropriate actions: install, repair/reinstall, or remove. It binds WinUSB only to the bootloader (`USB\\VID_05A9&PID_0580`), then installs the upload service and diagnostics. The final UVC device (`USB\\VID_05A9&PID_058C`) continues to use the Windows camera driver.
 
-## Como funciona
+The wizard follows the Windows display language:
+
+- `en-*` and unsupported languages: English
+- `pt-*`, including `pt-PT`: Brazilian Portuguese
+- `fr-CA` and `fr-FR`: French
+- `es-*`: Spanish
+- `de-*`: German
+- `ja-*`: Japanese
+- `zh-*`: Simplified Chinese
+
+## How it works
 
 ```text
-PS5 HD Camera em boot (05A9:0580)
+PS5 HD Camera in boot mode (05A9:0580)
               │
-              ├─ WinUSB + serviço PS5 Camera
+              ├─ WinUSB + PS5 Camera service
               │          │
-              │          └─ carrega o firmware V1 na RAM
+              │          └─ loads V1 firmware into RAM
               │
               └─ USB Camera-OV580 (05A9:058C)
                            │
-                           └─ UVC nativo do Windows
+                           └─ Native Windows UVC driver
 ```
 
-O firmware não é gravado na câmera. Após desligar ou remover o cabo, ela retorna ao modo boot; o serviço faz o upload novamente na próxima conexão.
+Firmware is not written to the camera. After power is removed or the cable is unplugged, it returns to boot mode; the service uploads the firmware again on the next connection.
 
-## Estado da v1.0.0
+## V1.0.0 status
 
-- upload automático do firmware na conexão e reconexão;
-- vídeo UVC validado em `1920×1080 @30` e estéreo `3840×1080 @30`;
-- instalador único, com interface nativa, progresso e desinstalação;
-- driver WinUSB restrito ao modo boot — não substitui o driver UVC do Windows;
-- firmware de referência fixado por SHA-256 e acompanhado da licença MIT declarada pelo publicador.
+- Automatic firmware upload on connection and reconnection.
+- UVC video validated at `1920×1080 @30` and stereo `3840×1080 @30`.
+- Single-file installer with native UI, progress reporting, repair, and uninstall.
+- WinUSB is limited to boot mode and never replaces the Windows UVC driver.
+- Reference firmware pinned by SHA-256 and distributed under the publisher's declared MIT license.
 
-O firmware V1 distribuído é `21.01-03.20.00.04-00.00.00.bin`, SHA-256 `10af1aee76fe0057a88db7ebf5f3ebf32430633effb93722be4cd0a9ed4fce54`, proveniente do commit `8773610978d5a4d91a6a6d8063d48a4f3afcfe5b` de [prosperodev/hdcamera](https://github.com/prosperodev/hdcamera). A V1 usa essa referência MIT; firmware independente é trabalho futuro.
+The V1 firmware is `21.01-03.20.00.04-00.00.00.bin`, SHA-256 `10af1aee76fe0057a88db7ebf5f3ebf32430633effb93722be4cd0a9ed4fce54`, from commit `8773610978d5a4d91a6a6d8063d48a4f3afcfe5b` of [prosperodev/hdcamera](https://github.com/prosperodev/hdcamera). V1 intentionally uses this MIT reference firmware; a fully independent firmware is future work.
 
-## Limites de distribuição
+## Distribution note
 
-O pacote atual usa assinatura de desenvolvimento para o catálogo do WinUSB. Por isso, a instalação pede autorização administrativa explícita para confiar no certificado do projeto. Não é uma assinatura de distribuição Microsoft nem um pacote do Windows Update.
+The current package uses a development signature for the WinUSB catalog. Installation therefore asks for explicit administrator approval to trust the project certificate. It is not Microsoft distribution signing and is not delivered through Windows Update.
 
-## Desenvolvimento e validação
+## Development and validation
 
 ```powershell
 cargo fmt --all -- --check
@@ -51,14 +61,14 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 .\windows\installer\test-installer.ps1
 ```
 
-O workflow de validação roda esses testes em Windows. Releases são montadas e publicadas automaticamente para tags `v*` por um runner Windows/WDK dedicado (`self-hosted`, `Windows`, `X64`, `ps5cam-signing`), que mantém a chave de assinatura fora do GitHub.
+The verification workflow runs these checks on Windows. Release assets are assembled and published from `v*` tags by a dedicated Windows/WDK runner (`self-hosted`, `Windows`, `X64`, `ps5cam-signing`), keeping the signing key outside GitHub.
 
-## Projeto de origem
+## Original project
 
 https://github.com/raleighlittles/PS5-Camera-Firmware-Loader
 
-## Apoie o projeto
+## Support the project
 
-<a href="bitcoin:bc1qw22nzhyrrk3eq45n4c06tje2q37a8fjtslrwrm"><img src="assets/bitcoin-donation-qr.svg" width="180" alt="QR code para doação em Bitcoin" /></a>
+<a href="bitcoin:bc1qw22nzhyrrk3eq45n4c06tje2q37a8fjtslrwrm"><img src="assets/bitcoin-donation-qr.svg" width="180" alt="Bitcoin donation QR code" /></a>
 
 Bitcoin: [`bc1qw22nzhyrrk3eq45n4c06tje2q37a8fjtslrwrm`](bitcoin:bc1qw22nzhyrrk3eq45n4c06tje2q37a8fjtslrwrm)

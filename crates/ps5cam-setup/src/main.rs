@@ -6,7 +6,11 @@ fn main() {
 }
 
 #[cfg(windows)]
+mod locale;
+
+#[cfg(windows)]
 mod windows_setup {
+    use super::locale::{Text, UiLanguage};
     use std::{
         env,
         ffi::c_void,
@@ -57,6 +61,7 @@ mod windows_setup {
     const MAGIC: &[u8; 8] = b"PS5PKG1\0";
     const PAYLOAD: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/ps5cam-setup.payload"));
     const RELEASE_VERSION: &str = env!("PS5CAM_SETUP_RELEASE_VERSION");
+    const HAS_EMBEDDED_PAYLOAD: bool = !cfg!(ps5cam_setup_without_payload);
     const CERTIFICATE_THUMBPRINT: &str = "EDAF55A1E4AE0C8C197988F7286626BD51228CA2";
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     const WINDOW_WIDTH: i32 = 880;
@@ -124,11 +129,11 @@ mod windows_setup {
     }
 
     impl WorkerProgress {
-        fn starting() -> Self {
+        fn starting(language: UiLanguage) -> Self {
             Self {
                 current: 3,
                 target: 3,
-                stage: "Preparando os componentes da instalação...".to_owned(),
+                stage: language.text(Text::Preparing).to_owned(),
                 result: None,
             }
         }
@@ -139,6 +144,7 @@ mod windows_setup {
         action: WizardAction,
         installation: InstallationState,
         remove_certificate: bool,
+        language: UiLanguage,
         worker: Option<Arc<Mutex<WorkerProgress>>>,
         result: Option<Result<OperationOutcome, String>>,
         launch_error: Option<String>,
@@ -150,6 +156,7 @@ mod windows_setup {
             action: WizardAction,
             remove_certificate: bool,
             installation: InstallationState,
+            language: UiLanguage,
         ) -> Self {
             Self {
                 page: if elevated {
@@ -160,6 +167,7 @@ mod windows_setup {
                 action,
                 installation,
                 remove_certificate,
+                language,
                 worker: None,
                 result: None,
                 launch_error: None,
@@ -172,6 +180,10 @@ mod windows_setup {
 
     fn wide(value: &str) -> Vec<u16> {
         value.encode_utf16().chain(Some(0)).collect()
+    }
+
+    fn text(language: UiLanguage, value: Text) -> &'static str {
+        language.text(value)
     }
 
     const fn rgb(red: u8, green: u8, blue: u8) -> COLORREF {
@@ -437,13 +449,13 @@ mod windows_setup {
         }
     }
 
-    fn paint_header(hdc: HDC, page: Page) {
+    fn paint_header(hdc: HDC, page: Page, language: UiLanguage) {
         let step = match page {
-            Page::Welcome => "1 de 3 · Começar",
-            Page::Options => "2 de 3 · Escolher",
-            Page::Review => "3 de 3 · Confirmar",
-            Page::Progress => "Aplicando alterações",
-            Page::Result => "Concluído",
+            Page::Welcome => text(language, Text::StepStart),
+            Page::Options => text(language, Text::StepChoose),
+            Page::Review => text(language, Text::StepConfirm),
+            Page::Progress => text(language, Text::Applying),
+            Page::Result => text(language, Text::Complete),
         };
         paint_text(
             hdc,
@@ -461,7 +473,10 @@ mod windows_setup {
         );
         paint_text(
             hdc,
-            &format!("Versão {RELEASE_VERSION}  ·  {step}"),
+            &format!(
+                "{} {RELEASE_VERSION}  ·  {step}",
+                text(language, Text::Version)
+            ),
             RECT {
                 left: 50,
                 top: 85,
@@ -581,28 +596,28 @@ mod windows_setup {
         );
     }
 
-    fn paint_welcome(hdc: HDC, installation: InstallationState) {
+    fn paint_welcome(hdc: HDC, installation: InstallationState, language: UiLanguage) {
         let (title, body, notice_title, notice_body, button) = match installation {
             InstallationState::NotInstalled => (
-                "Nenhuma instalação foi encontrada.",
-                "Este assistente está pronto para instalar o driver do modo boot, o serviço PS5 Camera e o diagnóstico. A câmera em modo USB (05A9:058C) continua no driver UVC do próprio Windows.",
-                "Pronto para instalar",
-                "Você poderá revisar a operação antes de autorizar o Windows. Nenhum firmware permanente será gravado.",
-                "Instalar  ›",
+                text(language, Text::NoInstallTitle),
+                text(language, Text::NoInstallBody),
+                text(language, Text::NoInstallNoticeTitle),
+                text(language, Text::NoInstallNoticeBody),
+                text(language, Text::InstallGo),
             ),
             InstallationState::Installed => (
-                "PS5 Camera já está instalado.",
-                "Uma instalação íntegra foi detectada neste computador. Você pode reinstalar os componentes para repará-los ou removê-los; o driver UVC do Windows continua preservado.",
-                "Instalação detectada",
-                "Escolha Reinstalar para aplicar novamente a versão incorporada ou Remover para retirar somente os componentes PS5 Camera.",
-                "Gerenciar  ›",
+                text(language, Text::InstalledTitle),
+                text(language, Text::InstalledBody),
+                text(language, Text::InstalledNoticeTitle),
+                text(language, Text::InstalledNoticeBody),
+                text(language, Text::ManageGo),
             ),
             InstallationState::NeedsRepair => (
-                "Foi encontrada uma instalação incompleta.",
-                "O serviço e a pasta de instalação não estão consistentes. A opção Reinstalar restaura os componentes; Remover os retira de forma controlada.",
-                "Reparo recomendado",
-                "Nenhum firmware permanente será gravado. A câmera UVC e outros drivers do Windows não serão alterados.",
-                "Revisar opções  ›",
+                text(language, Text::RepairTitle),
+                text(language, Text::RepairBody),
+                text(language, Text::RepairNoticeTitle),
+                text(language, Text::RepairNoticeBody),
+                text(language, Text::ReviewOptionsGo),
             ),
         };
         paint_text(
@@ -674,14 +689,19 @@ mod windows_setup {
         paint_button(hdc, primary_button(), button, true);
     }
 
-    fn paint_options(hdc: HDC, action: WizardAction, installation: InstallationState) {
+    fn paint_options(
+        hdc: HDC,
+        action: WizardAction,
+        installation: InstallationState,
+        language: UiLanguage,
+    ) {
         let reinstall = installation != InstallationState::NotInstalled;
         paint_text(
             hdc,
             if reinstall {
-                "Gerenciar a instalação existente"
+                text(language, Text::ManageExisting)
             } else {
-                "Pronto para instalar"
+                text(language, Text::ReadyInstall)
             },
             RECT {
                 left: 48,
@@ -697,9 +717,9 @@ mod windows_setup {
         paint_text(
             hdc,
             if reinstall {
-                "Reinstalar restaura os componentes desta versão. Remover não afeta a câmera UVC do Windows."
+                text(language, Text::ExistingOptionsBody)
             } else {
-                "Revise a instalação antes de qualquer alteração no computador."
+                text(language, Text::NewOptionsBody)
             },
             RECT {
                 left: 48,
@@ -716,11 +736,15 @@ mod windows_setup {
             hdc,
             install_card(),
             action == WizardAction::Install,
-            if reinstall { "Reinstalar" } else { "Instalar" },
             if reinstall {
-                "Reaplica o boot 05A9:0580, o serviço automático e o diagnóstico."
+                text(language, Text::Reinstall)
             } else {
-                "Prepara o boot 05A9:0580, o serviço automático e o diagnóstico."
+                text(language, Text::Install)
+            },
+            if reinstall {
+                text(language, Text::ReinstallDescription)
+            } else {
+                text(language, Text::InstallDescription)
             },
         );
         if reinstall {
@@ -728,12 +752,12 @@ mod windows_setup {
                 hdc,
                 uninstall_card(),
                 action == WizardAction::Uninstall,
-                "Remover do computador",
-                "Remove somente os componentes PS5 Camera. O driver UVC do Windows é preservado.",
+                text(language, Text::RemoveFromComputer),
+                text(language, Text::RemoveDescription),
             );
         }
-        paint_button(hdc, secondary_button(), "‹ Voltar", false);
-        paint_button(hdc, primary_button(), "Revisar  ›", true);
+        paint_button(hdc, secondary_button(), text(language, Text::Back), false);
+        paint_button(hdc, primary_button(), text(language, Text::Review), true);
     }
 
     fn paint_review(
@@ -741,25 +765,26 @@ mod windows_setup {
         action: WizardAction,
         remove_certificate: bool,
         installation: InstallationState,
+        language: UiLanguage,
     ) {
         let (title, body, button) = match action {
             WizardAction::Install => (
                 if installation == InstallationState::NotInstalled {
-                    "Pronto para instalar"
+                    text(language, Text::ReadyInstall)
                 } else {
-                    "Pronto para reinstalar"
+                    text(language, Text::ReadyReinstall)
                 },
-                "O Windows pedirá autorização de administrador para instalar o driver WinUSB somente para USB Boot (05A9:0580), o serviço PS5 Camera e o diagnóstico. A câmera UVC (05A9:058C) não será alterada.",
+                text(language, Text::ReviewInstallBody),
                 if installation == InstallationState::NotInstalled {
-                    "Instalar agora"
+                    text(language, Text::InstallNow)
                 } else {
-                    "Reinstalar agora"
+                    text(language, Text::ReinstallNow)
                 },
             ),
             WizardAction::Uninstall => (
-                "Pronto para remover",
-                "O serviço PS5 Camera e o pacote WinUSB do modo boot serão removidos. A câmera UVC e os demais drivers do Windows não serão removidos.",
-                "Remover agora",
+                text(language, Text::ReadyRemove),
+                text(language, Text::ReviewRemoveBody),
+                text(language, Text::RemoveNow),
             ),
         };
         paint_text(
@@ -815,7 +840,7 @@ mod windows_setup {
             }
             paint_text(
                 hdc,
-                "Remover também a confiança local no certificado de desenvolvimento",
+                text(language, Text::RemoveCertificate),
                 RECT {
                     left: 84,
                     top: 390,
@@ -829,7 +854,7 @@ mod windows_setup {
             );
             paint_text(
                 hdc,
-                "Deixe desmarcado se outro pacote PS5 Camera deste editor ainda for usado neste computador.",
+                text(language, Text::RemoveCertificateDetail),
                 RECT {
                     left: 84,
                     top: 414,
@@ -854,7 +879,7 @@ mod windows_setup {
             );
             paint_text(
                 hdc,
-                "O firmware é carregado apenas na memória pela câmera quando ela aparece em USB Boot. Nada é gravado permanentemente.",
+                text(language, Text::MemoryNotice),
                 RECT {
                     left: 68,
                     top: 376,
@@ -867,7 +892,7 @@ mod windows_setup {
                 DT_LEFT,
             );
         }
-        paint_button(hdc, secondary_button(), "‹ Voltar", false);
+        paint_button(hdc, secondary_button(), text(language, Text::Back), false);
         paint_button(hdc, primary_button(), button, true);
     }
 
@@ -876,17 +901,18 @@ mod windows_setup {
         action: WizardAction,
         progress: &WorkerProgress,
         installation: InstallationState,
+        language: UiLanguage,
     ) {
         paint_text(
             hdc,
             if action == WizardAction::Install {
                 if installation == InstallationState::NotInstalled {
-                    "Instalando componentes"
+                    text(language, Text::Installing)
                 } else {
-                    "Reinstalando componentes"
+                    text(language, Text::Reinstalling)
                 }
             } else {
-                "Removendo componentes"
+                text(language, Text::Removing)
             },
             RECT {
                 left: 48,
@@ -901,7 +927,7 @@ mod windows_setup {
         );
         paint_text(
             hdc,
-            "Esta janela permanecerá aberta até a operação terminar.",
+            text(language, Text::WindowStaysOpen),
             RECT {
                 left: 48,
                 top: 224,
@@ -965,7 +991,7 @@ mod windows_setup {
         );
         paint_text(
             hdc,
-            "Não desconecte a câmera enquanto a alteração estiver em andamento.",
+            text(language, Text::DoNotDisconnect),
             RECT {
                 left: 48,
                 top: 434,
@@ -982,38 +1008,39 @@ mod windows_setup {
     fn result_text(
         result: &Result<OperationOutcome, String>,
         action: WizardAction,
+        language: UiLanguage,
     ) -> (String, String, bool) {
         match result {
             Ok(OperationOutcome::Completed) => (
-                "Componentes removidos".to_owned(),
-                "A remoção foi concluída. A câmera UVC do Windows não foi alterada.".to_owned(),
+                text(language, Text::RemovedTitle).to_owned(),
+                text(language, Text::RemovedBody).to_owned(),
                 true,
             ),
             Ok(OperationOutcome::UvcReady) => (
-                "Câmera pronta".to_owned(),
-                "Instalação concluída. A câmera reapareceu como USB Camera-OV580 (05A9:058C) e já pode ser usada por aplicativos compatíveis.".to_owned(),
+                text(language, Text::CameraReadyTitle).to_owned(),
+                text(language, Text::CameraReadyBody).to_owned(),
                 true,
             ),
             Ok(OperationOutcome::BootDetectedUvcTimeout) => (
-                "Instalação concluída, câmera pendente".to_owned(),
-                "O driver e o serviço foram instalados, mas a câmera continuou em USB Boot (05A9:0580). Reconecte-a a uma porta USB 3.x e consulte o log PS5CameraService se ela não reaparecer como câmera USB.".to_owned(),
+                text(language, Text::CameraPendingTitle).to_owned(),
+                text(language, Text::CameraPendingBody).to_owned(),
                 false,
             ),
             Ok(OperationOutcome::CameraNotConnected) => (
-                "Instalação preparada".to_owned(),
-                "Os componentes foram instalados. Conecte a câmera diretamente a uma porta USB 3.x; o serviço fará o preparo automático quando ela aparecer.".to_owned(),
+                text(language, Text::InstallationPreparedTitle).to_owned(),
+                text(language, Text::InstallationPreparedBody).to_owned(),
                 true,
             ),
             Ok(OperationOutcome::RuntimeStatusUnavailable) => (
-                "Instalação concluída, verificação pendente".to_owned(),
-                "O Windows não forneceu um estado conclusivo da câmera. A instalação está concluída, mas confirme que ela aparece como USB Camera-OV580 antes de usá-la.".to_owned(),
+                text(language, Text::VerificationPendingTitle).to_owned(),
+                text(language, Text::VerificationPendingBody).to_owned(),
                 false,
             ),
             Err(error) => (
                 if action == WizardAction::Install {
-                    "Não foi possível concluir a instalação"
+                    text(language, Text::InstallationFailed)
                 } else {
-                    "Não foi possível concluir a remoção"
+                    text(language, Text::RemovalFailed)
                 }
                 .to_owned(),
                 error.clone(),
@@ -1022,8 +1049,13 @@ mod windows_setup {
         }
     }
 
-    fn paint_result(hdc: HDC, result: &Result<OperationOutcome, String>, action: WizardAction) {
-        let (title, body, success) = result_text(result, action);
+    fn paint_result(
+        hdc: HDC,
+        result: &Result<OperationOutcome, String>,
+        action: WizardAction,
+        language: UiLanguage,
+    ) {
+        let (title, body, success) = result_text(result, action, language);
         unsafe {
             let brush = CreateSolidBrush(if success { SUCCESS } else { WARNING });
             let old = SelectObject(hdc, brush as HGDIOBJ);
@@ -1073,7 +1105,7 @@ mod windows_setup {
             400,
             DT_LEFT,
         );
-        paint_button(hdc, primary_button(), "Fechar", true);
+        paint_button(hdc, primary_button(), text(language, Text::Close), true);
     }
 
     fn paint(hwnd: HWND) {
@@ -1084,31 +1116,40 @@ mod windows_setup {
             GetClientRect(hwnd, &mut client);
             fill(hdc, client, CANVAS);
             let locked = state().lock().expect("wizard state poisoned");
-            paint_header(hdc, locked.page);
+            paint_header(hdc, locked.page, locked.language);
             match locked.page {
-                Page::Welcome => paint_welcome(hdc, locked.installation),
-                Page::Options => paint_options(hdc, locked.action, locked.installation),
+                Page::Welcome => paint_welcome(hdc, locked.installation, locked.language),
+                Page::Options => {
+                    paint_options(hdc, locked.action, locked.installation, locked.language)
+                }
                 Page::Review => paint_review(
                     hdc,
                     locked.action,
                     locked.remove_certificate,
                     locked.installation,
+                    locked.language,
                 ),
                 Page::Progress => {
                     let progress = locked
                         .worker
                         .as_ref()
                         .and_then(|worker| worker.lock().ok().map(|value| value.clone()))
-                        .unwrap_or_else(WorkerProgress::starting);
-                    paint_progress(hdc, locked.action, &progress, locked.installation);
+                        .unwrap_or_else(|| WorkerProgress::starting(locked.language));
+                    paint_progress(
+                        hdc,
+                        locked.action,
+                        &progress,
+                        locked.installation,
+                        locked.language,
+                    );
                 }
                 Page::Result => {
                     let result = locked.result.clone().unwrap_or_else(|| {
                         Err(locked.launch_error.clone().unwrap_or_else(|| {
-                            "A operação terminou sem um resultado utilizável.".to_owned()
+                            text(locked.language, Text::NoUsableResult).to_owned()
                         }))
                     });
-                    paint_result(hdc, &result, locked.action);
+                    paint_result(hdc, &result, locked.action, locked.language);
                 }
             }
             EndPaint(hwnd, &paint);
@@ -1121,27 +1162,35 @@ mod windows_setup {
         value.stage = stage.into();
     }
 
-    fn start_engine(action: WizardAction, remove_certificate: bool) -> Arc<Mutex<WorkerProgress>> {
-        let progress = Arc::new(Mutex::new(WorkerProgress::starting()));
+    fn start_engine(
+        action: WizardAction,
+        remove_certificate: bool,
+        language: UiLanguage,
+    ) -> Arc<Mutex<WorkerProgress>> {
+        let progress = Arc::new(Mutex::new(WorkerProgress::starting(language)));
         let worker_progress = Arc::clone(&progress);
         thread::spawn(move || {
             let requested = match action {
                 WizardAction::Install => "Repair",
                 WizardAction::Uninstall => "Uninstall",
             };
-            let result = run_engine(requested, remove_certificate, &worker_progress);
+            let result = run_engine(requested, remove_certificate, &worker_progress, language);
             let mut value = worker_progress.lock().expect("progress state poisoned");
             value.target = 100;
             value.stage = match &result {
-                Ok(_) => "Finalizando e conferindo o resultado...".to_owned(),
-                Err(_) => "A operação terminou com uma mensagem para revisar.".to_owned(),
+                Ok(_) => text(language, Text::Finalizing).to_owned(),
+                Err(_) => text(language, Text::ReviewMessage).to_owned(),
             };
             value.result = Some(result);
         });
         progress
     }
 
-    fn elevate(action: WizardAction, remove_certificate: bool) -> Result<(), String> {
+    fn elevate(
+        action: WizardAction,
+        remove_certificate: bool,
+        language: UiLanguage,
+    ) -> Result<(), String> {
         let exe = env::current_exe().map_err(|error| error.to_string())?;
         let operation = wide("runas");
         let file = wide(&exe.to_string_lossy());
@@ -1167,10 +1216,8 @@ mod windows_setup {
             )
         };
         if result as isize <= 32 {
-            return Err(format!(
-                "O Windows não iniciou a autorização de administrador (código {}).",
-                result as isize
-            ));
+            return Err(text(language, Text::ElevationFailed)
+                .replace("{code}", &(result as isize).to_string()));
         }
         Ok(())
     }
@@ -1227,7 +1274,7 @@ mod windows_setup {
                             Page::Options
                         };
                     } else if is_in(primary_button(), x, y) {
-                        match elevate(locked.action, locked.remove_certificate) {
+                        match elevate(locked.action, locked.remove_certificate, locked.language) {
                             Ok(()) => close_after_elevation = true,
                             Err(error) => {
                                 locked.launch_error = Some(error);
@@ -1323,17 +1370,23 @@ mod windows_setup {
         remove_certificate: bool,
     ) -> Result<(), String> {
         let installation = detect_installation();
+        let language = UiLanguage::system();
         WIZARD
             .set(Mutex::new(WizardState::new(
                 elevated,
                 action,
                 remove_certificate,
                 installation,
+                language,
             )))
             .map_err(|_| "O instalador já possui uma janela ativa.".to_owned())?;
         if elevated {
             let mut locked = state().lock().expect("wizard state poisoned");
-            locked.worker = Some(start_engine(locked.action, locked.remove_certificate));
+            locked.worker = Some(start_engine(
+                locked.action,
+                locked.remove_certificate,
+                locked.language,
+            ));
         }
         let class_name = wide(CLASS_NAME);
         let title = wide(&format!("PS5 Camera Setup V{RELEASE_VERSION}"));
@@ -1402,6 +1455,11 @@ mod windows_setup {
     }
 
     fn extract_payload() -> Result<PathBuf, String> {
+        if !HAS_EMBEDDED_PAYLOAD {
+            return Err(UiLanguage::system()
+                .text(Text::PayloadUnavailable)
+                .to_owned());
+        }
         let mut cursor = Cursor::new(PAYLOAD);
         let mut magic = [0; 8];
         cursor
@@ -1443,12 +1501,9 @@ mod windows_setup {
         action: &str,
         remove_certificate: bool,
         progress: &Arc<Mutex<WorkerProgress>>,
+        language: UiLanguage,
     ) -> Result<OperationOutcome, String> {
-        set_progress(
-            progress,
-            12,
-            "Extraindo e verificando os componentes internos...",
-        );
+        set_progress(progress, 12, text(language, Text::Extracting));
         let payload = extract_payload()?;
         let engine = payload.join("PS5CameraDevelopmentInstaller.ps1");
         let manifest = payload.join("release-manifest.json");
@@ -1484,15 +1539,11 @@ mod windows_setup {
         if remove_certificate {
             command.arg("-RemoveDevelopmentCertificate");
         }
-        set_progress(
-            progress,
-            40,
-            "Componentes verificados. O Windows está aplicando a alteração solicitada...",
-        );
-        let output = command
-            .output()
-            .map_err(|error| format!("Não foi possível iniciar o motor de instalação: {error}"))?;
-        set_progress(progress, 90, "Conferindo o resultado da operação...");
+        set_progress(progress, 40, text(language, Text::ApplyingChange));
+        let output = command.output().map_err(|error| {
+            text(language, Text::EngineStartFailed).replace("{error}", &error.to_string())
+        })?;
+        set_progress(progress, 90, text(language, Text::CheckingResult));
         let _ = fs::remove_dir_all(&payload);
         if output.status.success() {
             if action == "Uninstall" {
@@ -1509,11 +1560,11 @@ mod windows_setup {
                 Ok(OperationOutcome::RuntimeStatusUnavailable)
             }
         } else {
-            Err(command_failure(&output))
+            Err(command_failure(&output, language))
         }
     }
 
-    fn command_failure(output: &std::process::Output) -> String {
+    fn command_failure(output: &std::process::Output, language: UiLanguage) -> String {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
         if !stderr.is_empty() {
             return stderr;
@@ -1522,7 +1573,7 @@ mod windows_setup {
         if !stdout.is_empty() {
             return stdout;
         }
-        format!("O motor de instalação terminou com {}.", output.status)
+        text(language, Text::EngineEnded).replace("{status}", &output.status.to_string())
     }
 
     fn verify_embedded_payload() -> Result<(), String> {
@@ -1557,7 +1608,7 @@ mod windows_setup {
         if output.status.success() {
             Ok(())
         } else {
-            Err(command_failure(&output))
+            Err(command_failure(&output, UiLanguage::system()))
         }
     }
 
@@ -1601,6 +1652,13 @@ mod windows_setup {
     #[cfg(test)]
     mod tests {
         use super::*;
+
+        #[test]
+        fn unpackaged_build_refuses_payload_extraction() {
+            if !HAS_EMBEDDED_PAYLOAD {
+                assert!(extract_payload().is_err());
+            }
+        }
 
         #[test]
         fn opens_the_embedded_ps5_camera_image_with_gdiplus() {
