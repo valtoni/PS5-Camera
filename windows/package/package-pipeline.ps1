@@ -141,16 +141,20 @@ function Assert-ExpectedCatalogSignature {
         [Parameter(Mandatory)][string] $ExpectedThumbprint
     )
 
-    # Get-AuthenticodeSignature validates the cryptographic CMS signature on
-    # the exact CAT file. Unlike adding a root certificate, it never prompts or
-    # changes machine/user trust state.
-    $signature = Get-AuthenticodeSignature -LiteralPath $Path
-    $actualThumbprint = if ($null -eq $signature.SignerCertificate) { '' } else {
-        $signature.SignerCertificate.Thumbprint.Replace(' ', '').ToUpperInvariant()
+    # SignedCms.CheckSignature($true) validates the exact catalog signature
+    # while deliberately skipping certificate-chain policy. Unlike adding a
+    # root certificate, it never prompts or changes machine/user trust state.
+    Add-Type -AssemblyName System.Security.Cryptography.Pkcs
+    $cms = [Security.Cryptography.Pkcs.SignedCms]::new()
+    $cms.Decode([IO.File]::ReadAllBytes($Path))
+    $cms.CheckSignature($true)
+    if ($cms.SignerInfos.Count -ne 1 -or $null -eq $cms.SignerInfos[0].Certificate) {
+        throw 'Catalog must contain exactly one embedded signing certificate.'
     }
+    $actualThumbprint = $cms.SignerInfos[0].Certificate.Thumbprint.Replace(' ', '').ToUpperInvariant()
     $expected = $ExpectedThumbprint.Replace(' ', '').ToUpperInvariant()
-    if ($signature.Status.ToString() -cne 'Valid' -or $actualThumbprint -cne $expected) {
-        throw "Catalog signature is not cryptographically valid for the pinned development signer. Status=$($signature.Status); signer=$actualThumbprint"
+    if ($actualThumbprint -cne $expected) {
+        throw "Catalog signature is not cryptographically valid for the pinned development signer. signer=$actualThumbprint"
     }
 }
 
@@ -306,7 +310,7 @@ switch ($Action) {
         $signArguments += $stagedCatalog
         Add-Step -Name 'test-sign-catalog' -Command ($(if ($Tools.signtool) { $Tools.signtool } else { 'signtool.exe' })) -Arguments $signArguments -MutatesSystem $false
         if ($AllowUntrustedDevelopmentSigner) {
-            Add-Step -Name 'verify-catalog-signature' -Command 'Get-AuthenticodeSignature' -Arguments @($stagedCatalog, $CertificateThumbprint) -MutatesSystem $false
+            Add-Step -Name 'verify-catalog-signature' -Command 'SignedCms.CheckSignature' -Arguments @($stagedCatalog, $CertificateThumbprint) -MutatesSystem $false
         }
         else {
             Add-Step -Name 'verify-catalog-signature' -Command ($(if ($Tools.signtool) { $Tools.signtool } else { 'signtool.exe' })) -Arguments @('verify', '/v', '/pa', $stagedCatalog) -MutatesSystem $false

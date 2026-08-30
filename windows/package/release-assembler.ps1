@@ -88,13 +88,18 @@ function Invoke-SignToolVerify {
 function Test-PinnedCatalogSignature {
     param([Parameter(Mandatory)][string] $Path, [Parameter(Mandatory)][string] $Thumbprint)
     try {
-        $signature = Get-AuthenticodeSignature -LiteralPath $Path
-        $actual = if ($null -eq $signature.SignerCertificate) { '' } else {
-            $signature.SignerCertificate.Thumbprint.Replace(' ', '').ToUpperInvariant()
+        Add-Type -AssemblyName System.Security.Cryptography.Pkcs
+        $cms = [Security.Cryptography.Pkcs.SignedCms]::new()
+        $cms.Decode([IO.File]::ReadAllBytes($Path))
+        # Verify the embedded CMS signature only. Chain policy is intentionally
+        # excluded here because importing a development root is interactive.
+        $cms.CheckSignature($true)
+        if ($cms.SignerInfos.Count -ne 1 -or $null -eq $cms.SignerInfos[0].Certificate) {
+            return [ordered]@{ passed = $false; output = 'catalog does not contain exactly one embedded signer certificate' }
         }
+        $actual = $cms.SignerInfos[0].Certificate.Thumbprint.Replace(' ', '').ToUpperInvariant()
         $expected = $Thumbprint.Replace(' ', '').ToUpperInvariant()
-        $passed = $signature.Status.ToString() -ceq 'Valid' -and $actual -ceq $expected
-        return [ordered]@{ passed = $passed; output = "status=$($signature.Status); signer=$actual" }
+        return [ordered]@{ passed = ($actual -ceq $expected); output = "signer=$actual" }
     }
     catch {
         return [ordered]@{ passed = $false; output = $_.Exception.Message }
