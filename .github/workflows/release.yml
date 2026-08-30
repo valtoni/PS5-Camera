@@ -76,6 +76,14 @@ jobs:
             if ($certificate.Count -ne 1) {
               throw 'The imported PFX does not contain the expected development signing certificate and private key.'
             }
+            $rootStore = [Security.Cryptography.X509Certificates.X509Store]::new('Root', 'CurrentUser')
+            try {
+              $rootStore.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+              $rootStore.Add($certificate[0])
+            }
+            finally {
+              $rootStore.Close()
+            }
             "thumbprint=$($certificate[0].Thumbprint)" >> $env:GITHUB_OUTPUT
           }
           finally {
@@ -121,7 +129,9 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          $certificatePath = "Cert:\CurrentUser\My\$env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT"
-          if (Test-Path -LiteralPath $certificatePath) {
-            Remove-Item -LiteralPath $certificatePath -Force
+          foreach ($store in @('My', 'Root')) {
+            $certificatePath = "Cert:\CurrentUser\$store\$env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT"
+            if (Test-Path -LiteralPath $certificatePath) {
+              Remove-Item -LiteralPath $certificatePath -Force
+            }
           }
