@@ -61,7 +61,16 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 .\windows\installer\test-installer.ps1
 ```
 
-The verification workflow runs these checks on Windows. Release assets are assembled and published from `v*` tags by a dedicated Windows/WDK runner (`self-hosted`, `Windows`, `X64`, `ps5cam-signing`), keeping the signing key outside GitHub.
+The verification workflow runs these checks on Windows. Release assets are assembled and published from `v*` tags by GitHub-hosted `windows-2022` runners. The development signing PFX is supplied exclusively through repository secrets, imported only for the release job, and removed before the ephemeral VM is discarded.
+
+Maintainers configure release signing once, from an elevated terminal with GitHub CLI authentication, without ever committing a PFX:
+
+```powershell
+gh auth login
+.\windows\package\configure-github-release-signing.ps1 -Repository valtoni/PS5-Camera -DispatchReleaseVersion 1.0.1
+```
+
+The helper generates a PFX password locally, writes `PS5CAM_SIGNING_PFX_BASE64` and `PS5CAM_SIGNING_PFX_PASSWORD` as Actions Secrets, and can dispatch a tagged release. A manual release run checks out the existing `v<version>` tag before building, so it produces the tagged source rather than the workflow branch.
 
 ## Original project
 

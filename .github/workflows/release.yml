@@ -15,10 +15,10 @@ permissions:
 
 jobs:
   publish:
-    # The driver is signed with the development certificate held only by the
-    # project's dedicated Windows/WDK runner.  Keeping this job self-hosted
-    # prevents a private signing key from being copied to GitHub-hosted VMs.
-    runs-on: [self-hosted, Windows, X64, ps5cam-signing]
+    # Public releases run on GitHub's ephemeral Windows VM.  The development
+    # signer is supplied only through Actions Secrets and is removed afterwards.
+    runs-on: windows-2022
+    timeout-minutes: 30
     env:
       PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT: EDAF55A1E4AE0C8C197988F7286626BD51228CA2
     steps:
@@ -43,16 +43,44 @@ jobs:
           if ($version -ne '1.0.1') {
             throw "This source tree is version 1.0.1; refusing to publish $version."
           }
+          $tag = "v$version"
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            git show-ref --tags --verify --quiet "refs/tags/$tag"
+            if ($LASTEXITCODE -ne 0) { throw "Release tag $tag does not exist." }
+            git checkout --detach $tag
+            if ($LASTEXITCODE -ne 0) { throw "Unable to check out release tag $tag." }
+          }
           "version=$version" >> $env:GITHUB_OUTPUT
-      - name: Validate signer and WDK prerequisites
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "revision=$((git rev-parse HEAD).Trim())" >> $env:GITHUB_OUTPUT
+      - name: Import development signer from Actions Secrets
         id: signer
         shell: pwsh
+        env:
+          PS5CAM_SIGNING_PFX_BASE64: ${{ secrets.PS5CAM_SIGNING_PFX_BASE64 }}
+          PS5CAM_SIGNING_PFX_PASSWORD: ${{ secrets.PS5CAM_SIGNING_PFX_PASSWORD }}
         run: |
-          $certificate = @(Get-ChildItem -Path 'Cert:\CurrentUser\My', 'Cert:\LocalMachine\My' -ErrorAction SilentlyContinue |
-            Where-Object { $_.Thumbprint -eq $env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT -and $_.HasPrivateKey })
-          if ($certificate.Count -ne 1) { throw 'The configured development signing certificate was not found uniquely with its private key.' }
-          $store = if ($certificate[0].PSParentPath -like '*LocalMachine*') { 'machine' } else { 'user' }
-          "certificate_store=$store" >> $env:GITHUB_OUTPUT
+          $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:PS5CAM_SIGNING_PFX_BASE64) -or [string]::IsNullOrWhiteSpace($env:PS5CAM_SIGNING_PFX_PASSWORD)) {
+            throw 'Release signing secrets are missing. Configure PS5CAM_SIGNING_PFX_BASE64 and PS5CAM_SIGNING_PFX_PASSWORD before publishing.'
+          }
+          $pfxPath = Join-Path $env:RUNNER_TEMP 'ps5cam-release-signer.pfx'
+          try {
+            $encodedPfx = [regex]::Replace($env:PS5CAM_SIGNING_PFX_BASE64, '\s', '')
+            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($encodedPfx))
+            $password = ConvertTo-SecureString -String $env:PS5CAM_SIGNING_PFX_PASSWORD -AsPlainText -Force
+            $imported = @(Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation 'Cert:\CurrentUser\My' -Password $password)
+            $certificate = @($imported | Where-Object {
+              $_.Thumbprint -eq $env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT -and $_.HasPrivateKey
+            })
+            if ($certificate.Count -ne 1) {
+              throw 'The imported PFX does not contain the expected development signing certificate and private key.'
+            }
+            "thumbprint=$($certificate[0].Thumbprint)" >> $env:GITHUB_OUTPUT
+          }
+          finally {
+            Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
+          }
       - name: Verify source
         shell: pwsh
         run: |
@@ -75,7 +103,6 @@ jobs:
           $output = Join-Path $env:RUNNER_TEMP "ps5cam-setup-$run"
           ./windows/package/package-pipeline.ps1 -Action Catalog -Execute -StagingDirectory $catalog -ConfirmHardwareId 'USB\VID_05A9&PID_0580'
           $testSign = @('-Action', 'TestSign', '-Execute', '-StagingDirectory', $catalog, '-CertificateThumbprint', $env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT, '-ConfirmHardwareId', 'USB\VID_05A9&PID_0580')
-          if ('${{ steps.signer.outputs.certificate_store }}' -eq 'machine') { $testSign += '-MachineCertificateStore' }
           & ./windows/package/package-pipeline.ps1 @testSign
           cargo build --release --locked -p ps5cam-service -p ps5cam-diagnostics
           ./windows/package/build-development-release.ps1 -OutputDirectory $release -ReleaseVersion $version -SourceRevision $revision -SourceDateEpoch $epoch -CatalogDirectory $catalog -ManifestCertificateThumbprint $env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT
@@ -87,7 +114,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
-          target_commitish: ${{ github.sha }}
+          target_commitish: ${{ steps.version.outputs.revision }}
           name: PS5 Camera Windows Driver v${{ steps.version.outputs.version }}
           generate_release_notes: true
           files: ${{ steps.build.outputs.setup }}
+      - name: Remove imported release signer
+        if: always()
+        shell: pwsh
+        run: |
+          $certificatePath = "Cert:\CurrentUser\My\$env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT"
+          if (Test-Path -LiteralPath $certificatePath) {
+            Remove-Item -LiteralPath $certificatePath -Force
+          }
