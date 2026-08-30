@@ -65,6 +65,7 @@ jobs:
             throw 'Release signing secrets are missing. Configure PS5CAM_SIGNING_PFX_BASE64 and PS5CAM_SIGNING_PFX_PASSWORD before publishing.'
           }
           $pfxPath = Join-Path $env:RUNNER_TEMP 'ps5cam-release-signer.pfx'
+          $certificatePath = Join-Path $env:RUNNER_TEMP 'ps5cam-release-signer.cer'
           try {
             $encodedPfx = [regex]::Replace($env:PS5CAM_SIGNING_PFX_BASE64, '\s', '')
             [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($encodedPfx))
@@ -76,18 +77,14 @@ jobs:
             if ($certificate.Count -ne 1) {
               throw 'The imported PFX does not contain the expected development signing certificate and private key.'
             }
-            $rootStore = [Security.Cryptography.X509Certificates.X509Store]::new('Root', 'CurrentUser')
-            try {
-              $rootStore.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
-              $rootStore.Add($certificate[0])
-            }
-            finally {
-              $rootStore.Close()
-            }
+            [IO.File]::WriteAllBytes($certificatePath, $certificate[0].Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+            & certutil.exe -user -f -addstore Root $certificatePath | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to trust the development signer in this ephemeral runner.' }
             "thumbprint=$($certificate[0].Thumbprint)" >> $env:GITHUB_OUTPUT
           }
           finally {
             Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $certificatePath -Force -ErrorAction SilentlyContinue
           }
       - name: Verify source
         shell: pwsh
@@ -129,9 +126,11 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          foreach ($store in @('My', 'Root')) {
-            $certificatePath = "Cert:\CurrentUser\$store\$env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT"
-            if (Test-Path -LiteralPath $certificatePath) {
-              Remove-Item -LiteralPath $certificatePath -Force
-            }
+          $certificatePath = "Cert:\CurrentUser\My\$env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT"
+          if (Test-Path -LiteralPath $certificatePath) {
+            Remove-Item -LiteralPath $certificatePath -Force
+          }
+          & certutil.exe -user -delstore Root $env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            Write-Warning 'The temporary trusted root was already absent during cleanup.'
           }
