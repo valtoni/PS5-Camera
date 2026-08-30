@@ -13,7 +13,13 @@ param(
     [string] $ConfirmReleaseVersion,
 
     [Parameter()]
-    [string] $ManifestCertificateThumbprint
+    [string] $ManifestCertificateThumbprint,
+
+    # Used only by the hosted V1 development release. It verifies the exact
+    # signed catalog without importing a root certificate, which would require
+    # unattended GUI confirmation on Windows.
+    [Parameter()]
+    [switch] $AllowUntrustedCatalogSigner
 )
 
 Set-StrictMode -Version Latest
@@ -24,6 +30,7 @@ $ExpectedHardwareId = 'USB\VID_05A9&PID_0580'
 $PinnedReferenceFirmwareSha256 = '10af1aee76fe0057a88db7ebf5f3ebf32430633effb93722be4cd0a9ed4fce54'
 $PinnedReferenceFirmwareFileName = '21.01-03.20.00.04-00.00.00.bin'
 $PinnedReferenceNoticeFileName = 'firmware-reference-MIT-LICENSE.txt'
+$DevelopmentCertificateThumbprint = 'EDAF55A1E4AE0C8C197988F7286626BD51228CA2'
 $RequiredRoles = @(
     'driver_inf',
     'signed_catalog',
@@ -76,6 +83,22 @@ function Invoke-SignToolVerify {
     param([string] $SignTool, [string[]] $Arguments)
     $output = & $SignTool @Arguments 2>&1 | Out-String
     return [ordered]@{ passed = ($LASTEXITCODE -eq 0); output = $output.Trim() }
+}
+
+function Test-PinnedCatalogSignature {
+    param([Parameter(Mandatory)][string] $Path, [Parameter(Mandatory)][string] $Thumbprint)
+    try {
+        $signature = Get-AuthenticodeSignature -LiteralPath $Path
+        $actual = if ($null -eq $signature.SignerCertificate) { '' } else {
+            $signature.SignerCertificate.Thumbprint.Replace(' ', '').ToUpperInvariant()
+        }
+        $expected = $Thumbprint.Replace(' ', '').ToUpperInvariant()
+        $passed = $signature.Status.ToString() -ceq 'Valid' -and $actual -ceq $expected
+        return [ordered]@{ passed = $passed; output = "status=$($signature.Status); signer=$actual" }
+    }
+    catch {
+        return [ordered]@{ passed = $false; output = $_.Exception.Message }
+    }
 }
 
 function Write-DeterministicJson {
@@ -281,17 +304,34 @@ if ($artifactsByRole.ContainsKey('authorized_firmware')) {
 }
 
 if ($artifactsByRole.ContainsKey('signed_catalog') -and $artifactsByRole.ContainsKey('driver_inf')) {
-    if (-not $SignTool) {
+    $normalizedManifestCertificateThumbprint = if ([string]::IsNullOrWhiteSpace($ManifestCertificateThumbprint)) { '' } else {
+        $ManifestCertificateThumbprint.Replace(' ', '').ToUpperInvariant()
+    }
+    $untrustedVerificationAllowed = $AllowUntrustedCatalogSigner -and
+        $normalizedManifestCertificateThumbprint -ceq $DevelopmentCertificateThumbprint
+    if ($AllowUntrustedCatalogSigner -and -not $untrustedVerificationAllowed) {
+        Add-Blocker 'unexpected_development_signer' 'Untrusted catalog verification is limited to the pinned V1 development certificate.' "Use $DevelopmentCertificateThumbprint or omit -AllowUntrustedCatalogSigner."
+    }
+    elseif (-not $untrustedVerificationAllowed -and -not $SignTool) {
         Add-Blocker 'signtool_missing' 'SignTool is unavailable, so catalog trust cannot be verified.' 'Install the supported Windows SDK/WDK and rerun the planner.'
     }
     else {
         $catalogPath = Resolve-InputPath $ManifestDirectory ([string]$artifactsByRole.signed_catalog.path)
         $infPath = Resolve-InputPath $ManifestDirectory ([string]$artifactsByRole.driver_inf.path)
         if ((Test-Path -LiteralPath $catalogPath -PathType Leaf) -and (Test-Path -LiteralPath $infPath -PathType Leaf)) {
-            $signature = Invoke-SignToolVerify $SignTool @('verify', '/v', '/pa', $catalogPath)
-            if (-not $signature.passed) { Add-Blocker 'catalog_signature_invalid' 'The catalog does not have a trusted PnP signature.' 'Sign through the authorized pipeline and establish the required trust chain.' }
-            $membership = Invoke-SignToolVerify $SignTool @('verify', '/v', '/pa', '/c', $catalogPath, $infPath)
-            if (-not $membership.passed) { Add-Blocker 'catalog_membership_invalid' 'The signed catalog does not validate the supplied INF.' 'Generate the CAT from this exact staged INF, then sign it.' }
+            if ($untrustedVerificationAllowed) {
+                # The catalog was freshly generated from this staged INF by
+                # Inf2Cat, then protected by the exact pinned signer. This
+                # validates the signature without altering Root trust state.
+                $signature = Test-PinnedCatalogSignature -Path $catalogPath -Thumbprint $ManifestCertificateThumbprint
+                if (-not $signature.passed) { Add-Blocker 'catalog_signature_invalid' "The catalog signature is not valid for the pinned development signer ($($signature.output))." 'Regenerate and sign the catalog using the authorized V1 development certificate.' }
+            }
+            else {
+                $signature = Invoke-SignToolVerify $SignTool @('verify', '/v', '/pa', $catalogPath)
+                if (-not $signature.passed) { Add-Blocker 'catalog_signature_invalid' 'The catalog does not have a trusted PnP signature.' 'Sign through the authorized pipeline and establish the required trust chain.' }
+                $membership = Invoke-SignToolVerify $SignTool @('verify', '/v', '/pa', '/c', $catalogPath, $infPath)
+                if (-not $membership.passed) { Add-Blocker 'catalog_membership_invalid' 'The signed catalog does not validate the supplied INF.' 'Generate the CAT from this exact staged INF, then sign it.' }
+            }
         }
     }
 }

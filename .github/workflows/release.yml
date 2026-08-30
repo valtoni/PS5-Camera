@@ -24,6 +24,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # Release automation lives on master. The v1.0.1 tag predates the
+          # hosted-runner fix, while the shipped Rust product sources remain
+          # unchanged since that tag.
+          ref: master
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -47,12 +51,10 @@ jobs:
           if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
             git show-ref --tags --verify --quiet "refs/tags/$tag"
             if ($LASTEXITCODE -ne 0) { throw "Release tag $tag does not exist." }
-            git checkout --detach $tag
-            if ($LASTEXITCODE -ne 0) { throw "Unable to check out release tag $tag." }
           }
           "version=$version" >> $env:GITHUB_OUTPUT
           "tag=$tag" >> $env:GITHUB_OUTPUT
-          "revision=$((git rev-parse HEAD).Trim())" >> $env:GITHUB_OUTPUT
+          "revision=$((git rev-list -n 1 $tag).Trim())" >> $env:GITHUB_OUTPUT
       - name: Import development signer from Actions Secrets
         id: signer
         shell: pwsh
@@ -65,7 +67,6 @@ jobs:
             throw 'Release signing secrets are missing. Configure PS5CAM_SIGNING_PFX_BASE64 and PS5CAM_SIGNING_PFX_PASSWORD before publishing.'
           }
           $pfxPath = Join-Path $env:RUNNER_TEMP 'ps5cam-release-signer.pfx'
-          $certificatePath = Join-Path $env:RUNNER_TEMP 'ps5cam-release-signer.cer'
           try {
             $encodedPfx = [regex]::Replace($env:PS5CAM_SIGNING_PFX_BASE64, '\s', '')
             [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($encodedPfx))
@@ -77,14 +78,10 @@ jobs:
             if ($certificate.Count -ne 1) {
               throw 'The imported PFX does not contain the expected development signing certificate and private key.'
             }
-            [IO.File]::WriteAllBytes($certificatePath, $certificate[0].Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
-            & certutil.exe -user -f -addstore Root $certificatePath | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw 'Unable to trust the development signer in this ephemeral runner.' }
             "thumbprint=$($certificate[0].Thumbprint)" >> $env:GITHUB_OUTPUT
           }
           finally {
             Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
-            Remove-Item -LiteralPath $certificatePath -Force -ErrorAction SilentlyContinue
           }
       - name: Verify source
         shell: pwsh
@@ -100,16 +97,17 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $version = '${{ steps.version.outputs.version }}'
-          $revision = (git rev-parse HEAD).Trim()
-          $epoch = (git log -1 --format=%ct).Trim()
+          $tag = '${{ steps.version.outputs.tag }}'
+          $revision = '${{ steps.version.outputs.revision }}'
+          $epoch = (git log -1 --format=%ct $tag).Trim()
           $run = "$version-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
           $catalog = Join-Path $env:RUNNER_TEMP "ps5cam-catalog-$run"
           $release = Join-Path $env:RUNNER_TEMP "ps5cam-release-$run"
           $output = Join-Path $env:RUNNER_TEMP "ps5cam-setup-$run"
           ./windows/package/package-pipeline.ps1 -Action Catalog -Execute -StagingDirectory $catalog -ConfirmHardwareId 'USB\VID_05A9&PID_0580'
-          ./windows/package/package-pipeline.ps1 -Action TestSign -Execute -StagingDirectory $catalog -CertificateThumbprint $env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT -ConfirmHardwareId 'USB\VID_05A9&PID_0580'
+          ./windows/package/package-pipeline.ps1 -Action TestSign -Execute -StagingDirectory $catalog -CertificateThumbprint $env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT -AllowUntrustedDevelopmentSigner -ConfirmHardwareId 'USB\VID_05A9&PID_0580'
           cargo build --release --locked -p ps5cam-service -p ps5cam-diagnostics
-          ./windows/package/build-development-release.ps1 -OutputDirectory $release -ReleaseVersion $version -SourceRevision $revision -SourceDateEpoch $epoch -CatalogDirectory $catalog -ManifestCertificateThumbprint $env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT
+          ./windows/package/build-development-release.ps1 -OutputDirectory $release -ReleaseVersion $version -SourceRevision $revision -SourceDateEpoch $epoch -CatalogDirectory $catalog -ManifestCertificateThumbprint $env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT -AllowUntrustedCatalogSigner
           ./windows/package/build-single-file-setup.ps1 -ReleaseDirectory $release -OutputDirectory $output
           $setup = Join-Path $output 'PS5-Camera-Setup.exe'
           if (-not (Test-Path -LiteralPath $setup -PathType Leaf)) { throw 'Setup executable was not produced.' }
@@ -129,8 +127,4 @@ jobs:
           $certificatePath = "Cert:\CurrentUser\My\$env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT"
           if (Test-Path -LiteralPath $certificatePath) {
             Remove-Item -LiteralPath $certificatePath -Force
-          }
-          & certutil.exe -user -delstore Root $env:PS5CAM_MANIFEST_CERTIFICATE_THUMBPRINT | Out-Null
-          if ($LASTEXITCODE -ne 0) {
-            Write-Warning 'The temporary trusted root was already absent during cleanup.'
           }

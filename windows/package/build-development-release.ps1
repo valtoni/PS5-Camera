@@ -8,7 +8,8 @@ param(
     [Parameter(Mandatory)][long] $SourceDateEpoch,
     [Parameter()][string] $CatalogDirectory = (Join-Path $PSScriptRoot '..\..\target\wdk-catalog-26100'),
     [Parameter()][string] $BinaryDirectory = (Join-Path $PSScriptRoot '..\..\target\release'),
-    [Parameter()][string] $ManifestCertificateThumbprint = 'EDAF55A1E4AE0C8C197988F7286626BD51228CA2'
+    [Parameter()][string] $ManifestCertificateThumbprint = 'EDAF55A1E4AE0C8C197988F7286626BD51228CA2',
+    [Parameter()][switch] $AllowUntrustedCatalogSigner
 )
 
 Set-StrictMode -Version Latest
@@ -51,7 +52,8 @@ try {
         artifacts = @($artifacts)
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $inputPath -Encoding utf8NoBOM
     & (Join-Path $PSScriptRoot 'release-assembler.ps1') -InputManifest $inputPath -OutputDirectory $OutputDirectory -Assemble `
-        -ConfirmReleaseVersion $ReleaseVersion -ManifestCertificateThumbprint $ManifestCertificateThumbprint
+        -ConfirmReleaseVersion $ReleaseVersion -ManifestCertificateThumbprint $ManifestCertificateThumbprint `
+        -AllowUntrustedCatalogSigner:$AllowUntrustedCatalogSigner
     exit $LASTEXITCODE
 }
 finally { Remove-Item -LiteralPath $inputPath -Force -ErrorAction SilentlyContinue }

@@ -30,6 +30,15 @@ Describe 'PS5 camera Windows package pipeline' {
         $script:CatalogPlan = Invoke-PipelineDryRun -Arguments @('-Action', 'Catalog')
         $script:InstallPlan = Invoke-PipelineDryRun -Arguments @('-Action', 'Install')
         $script:RollbackPlan = Invoke-PipelineDryRun -Arguments @('-Action', 'Rollback', '-StatePath', $StatePath)
+        $script:UnexpectedUntrustedSignerPlan = Invoke-PipelineDryRun -Arguments @(
+            '-Action', 'TestSign',
+            '-AllowUntrustedDevelopmentSigner',
+            '-CertificateThumbprint', (('0' * 40) -join '')
+        )
+        $script:UntrustedSignerWrongScopePlan = Invoke-PipelineDryRun -Arguments @(
+            '-Action', 'Catalog',
+            '-AllowUntrustedDevelopmentSigner'
+        )
 
         $guardOutput = & $PowerShell -NoLogo -NoProfile -File $Pipeline -Action Catalog -Execute 2>&1 | Out-String
         $script:GuardExitCode = $LASTEXITCODE
@@ -77,5 +86,10 @@ Describe 'PS5 camera Windows package pipeline' {
     It 'refuses execute mode without exact hardware confirmation' {
         $GuardExitCode -eq 0 | Should Be $false
         @($GuardPlan.blockers | ForEach-Object code) -contains 'hardware_confirmation_required' | Should Be $true
+    }
+
+    It 'limits untrusted development verification to the pinned signer and signing action' {
+        @($UnexpectedUntrustedSignerPlan.blockers | ForEach-Object code) -contains 'unexpected_development_signer' | Should Be $true
+        @($UntrustedSignerWrongScopePlan.blockers | ForEach-Object code) -contains 'untrusted_verification_scope_invalid' | Should Be $true
     }
 }

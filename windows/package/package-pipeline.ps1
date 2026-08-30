@@ -30,7 +30,13 @@ param(
     [switch] $MachineCertificateStore,
 
     [Parameter()]
-    [string] $TimestampUrl
+    [string] $TimestampUrl,
+
+    # GitHub-hosted releases use the pinned V1 development signer. Its root is
+    # intentionally not imported into Root (that Windows action is interactive).
+    # This switch verifies the exact catalog signature without changing trust.
+    [Parameter()]
+    [switch] $AllowUntrustedDevelopmentSigner
 )
 
 Set-StrictMode -Version Latest
@@ -41,6 +47,7 @@ $ExpectedHardwareId = 'USB\VID_05A9&PID_0580'
 $PackageId = 'org.ps5camera.boot.winusb'
 $InfName = 'ps5cam-boot.inf'
 $CatalogName = 'ps5cam-boot.cat'
+$DevelopmentCertificateThumbprint = 'EDAF55A1E4AE0C8C197988F7286626BD51228CA2'
 $PackageRoot = $PSScriptRoot
 $Validator = Join-Path $PackageRoot 'validate-package.ps1'
 $PowerShellExe = (Get-Process -Id $PID).Path
@@ -126,6 +133,25 @@ function Invoke-NativeTool {
         throw "Command failed with exit code $LASTEXITCODE`: $Tool $($Arguments -join ' ')`n$output"
     }
     return $output
+}
+
+function Assert-ExpectedCatalogSignature {
+    param(
+        [Parameter(Mandatory)][string] $Path,
+        [Parameter(Mandatory)][string] $ExpectedThumbprint
+    )
+
+    # Get-AuthenticodeSignature validates the cryptographic CMS signature on
+    # the exact CAT file. Unlike adding a root certificate, it never prompts or
+    # changes machine/user trust state.
+    $signature = Get-AuthenticodeSignature -LiteralPath $Path
+    $actualThumbprint = if ($null -eq $signature.SignerCertificate) { '' } else {
+        $signature.SignerCertificate.Thumbprint.Replace(' ', '').ToUpperInvariant()
+    }
+    $expected = $ExpectedThumbprint.Replace(' ', '').ToUpperInvariant()
+    if ($signature.Status.ToString() -cne 'Valid' -or $actualThumbprint -cne $expected) {
+        throw "Catalog signature is not cryptographically valid for the pinned development signer. Status=$($signature.Status); signer=$actualThumbprint"
+    }
 }
 
 function Test-IsAdministrator {
@@ -279,7 +305,12 @@ switch ($Action) {
         }
         $signArguments += $stagedCatalog
         Add-Step -Name 'test-sign-catalog' -Command ($(if ($Tools.signtool) { $Tools.signtool } else { 'signtool.exe' })) -Arguments $signArguments -MutatesSystem $false
-        Add-Step -Name 'verify-catalog-signature' -Command ($(if ($Tools.signtool) { $Tools.signtool } else { 'signtool.exe' })) -Arguments @('verify', '/v', '/pa', $stagedCatalog) -MutatesSystem $false
+        if ($AllowUntrustedDevelopmentSigner) {
+            Add-Step -Name 'verify-catalog-signature' -Command 'Get-AuthenticodeSignature' -Arguments @($stagedCatalog, $CertificateThumbprint) -MutatesSystem $false
+        }
+        else {
+            Add-Step -Name 'verify-catalog-signature' -Command ($(if ($Tools.signtool) { $Tools.signtool } else { 'signtool.exe' })) -Arguments @('verify', '/v', '/pa', $stagedCatalog) -MutatesSystem $false
+        }
         if ([string]::IsNullOrWhiteSpace($StagingDirectory)) {
             Add-Blocker -Code 'staging_directory_required' -Message 'TestSign requires the catalog staging directory.' -Resolution 'Pass -StagingDirectory produced by Catalog.'
         }
@@ -288,6 +319,9 @@ switch ($Action) {
         }
         if ($CertificateThumbprint -notmatch '^[0-9A-Fa-f]{40}$') {
             Add-Blocker -Code 'certificate_thumbprint_required' -Message 'A 40-hex certificate thumbprint is required.' -Resolution 'Provision an authorized test certificate and pass -CertificateThumbprint explicitly.'
+        }
+        elseif ($AllowUntrustedDevelopmentSigner -and $CertificateThumbprint.Replace(' ', '').ToUpperInvariant() -cne $DevelopmentCertificateThumbprint) {
+            Add-Blocker -Code 'unexpected_development_signer' -Message 'Untrusted development verification is limited to the pinned V1 development signing certificate.' -Resolution "Use $DevelopmentCertificateThumbprint or omit -AllowUntrustedDevelopmentSigner."
         }
         if (-not [string]::IsNullOrWhiteSpace($TimestampUrl)) {
             $uri = $null
@@ -353,6 +387,10 @@ switch ($Action) {
             Add-Blocker -Code 'pnputil_missing' -Message 'PnPUtil is not available.' -Resolution 'Run on a supported Windows installation.'
         }
     }
+}
+
+if ($AllowUntrustedDevelopmentSigner -and $Action -ne 'TestSign') {
+    Add-Blocker -Code 'untrusted_verification_scope_invalid' -Message 'AllowUntrustedDevelopmentSigner is permitted only for TestSign.' -Resolution 'Use the switch only in the ephemeral release signing step.'
 }
 
 if ($Execute -and $Action -ne 'Inspect') {
@@ -429,7 +467,12 @@ try {
             }
             $signStep = $Steps | Where-Object { $_.name -eq 'test-sign-catalog' } | Select-Object -First 1
             $null = Invoke-NativeTool -Tool $Tools.signtool -Arguments $signStep.arguments
-            $null = Invoke-NativeTool -Tool $Tools.signtool -Arguments @('verify', '/v', '/pa', $stagedCatalog)
+            if ($AllowUntrustedDevelopmentSigner) {
+                Assert-ExpectedCatalogSignature -Path $stagedCatalog -ExpectedThumbprint $CertificateThumbprint
+            }
+            else {
+                $null = Invoke-NativeTool -Tool $Tools.signtool -Arguments @('verify', '/v', '/pa', $stagedCatalog)
+            }
             $result.status = 'completed'
             $result['signed_catalog'] = $stagedCatalog
         }
